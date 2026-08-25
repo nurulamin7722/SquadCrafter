@@ -2,17 +2,17 @@ import html2canvas from 'html2canvas';
 
 // Default Squad Data
 const defaultPlayers = [
-  { id: 1, name: "ই. মার্টিনেজ", number: 1, role: "GK", photo: null },
-  { id: 2, name: "এ. রবার্টসন", number: 26, role: "DEF", photo: null },
-  { id: 3, name: "ভি. ভ্যান ডাইক", number: 4, role: "DEF", photo: null },
-  { id: 4, name: "ডব্লিউ. সালিবা", number: 2, role: "DEF", photo: null },
-  { id: 5, name: "এ. হাকিমি", number: 2, role: "DEF", photo: null },
-  { id: 6, name: "কে. ডি ব্রুইনা", number: 17, role: "MID", photo: null },
-  { id: 7, name: "রদ্রি", number: 16, role: "MID", photo: null },
-  { id: 8, name: "জে. বেলিংহাম", number: 5, role: "MID", photo: null },
-  { id: 9, name: "এল. মেসি", number: 10, role: "FWD", photo: null },
-  { id: 10, name: "ই. হালান্ড", number: 9, role: "FWD", photo: null },
-  { id: 11, name: "কে. এমবাপ্পে", number: 7, role: "FWD", photo: null }
+  { id: 1, name: "ই. মার্টিনেজ", number: 1, role: "GK", photo: null, isCaptain: false },
+  { id: 2, name: "এ. রবার্টসন", number: 26, role: "DEF", photo: null, isCaptain: false },
+  { id: 3, name: "ভি. ভ্যান ডাইক", number: 4, role: "DEF", photo: null, isCaptain: false },
+  { id: 4, name: "ডব্লিউ. সালিবা", number: 2, role: "DEF", photo: null, isCaptain: false },
+  { id: 5, name: "এ. হাকিমি", number: 2, role: "DEF", photo: null, isCaptain: false },
+  { id: 6, name: "কে. ডি ব্রুইনা", number: 17, role: "MID", photo: null, isCaptain: false },
+  { id: 7, name: "রদ্রি", number: 16, role: "MID", photo: null, isCaptain: false },
+  { id: 8, name: "জে. বেলিংহাম", number: 5, role: "MID", photo: null, isCaptain: false },
+  { id: 9, name: "এল. মেসি", number: 10, role: "FWD", photo: null, isCaptain: true },
+  { id: 10, name: "ই. হালান্ড", number: 9, role: "FWD", photo: null, isCaptain: false },
+  { id: 11, name: "কে. এমবাপ্পে", number: 7, role: "FWD", photo: null, isCaptain: false }
 ];
 
 // Deep copy of default players for runtime edits
@@ -230,6 +230,15 @@ function initApp() {
       <div class="player-name-badge">
         <span></span>
       </div>
+      <div class="player-detail-card">
+        <div class="detail-card-captain-tag">CAPTAIN</div>
+        <div class="detail-card-header">
+          <span class="detail-card-role">MID</span>
+          <span class="detail-card-number">10</span>
+        </div>
+        <div class="detail-card-avatar"></div>
+        <div class="detail-card-name">এল. মেসি</div>
+      </div>
     `;
 
     // Click handler to edit/swap this player
@@ -240,7 +249,22 @@ function initApp() {
         return;
       }
       const playerId = parseInt(node.getAttribute('data-player-id'), 10);
-      if (playerId) {
+      if (!playerId) return;
+
+      if (is3DEnabled) {
+        // In 3D mode, first click toggles details card, second click opens edit modal
+        if (node.classList.contains('show-detail-card')) {
+          node.classList.remove('show-detail-card');
+          openEditModal(playerId);
+        } else {
+          // Hide other detail cards
+          document.querySelectorAll('.player-node').forEach(n => {
+            n.classList.remove('show-detail-card');
+          });
+          node.classList.add('show-detail-card');
+          e.stopPropagation(); // prevent document click listener from hiding it immediately
+        }
+      } else {
         openEditModal(playerId);
       }
     });
@@ -292,6 +316,21 @@ function renderSquad() {
       node.querySelector('.player-number-badge').textContent = player.number;
       node.querySelector('.player-name-badge span').textContent = player.name;
 
+      // Update Captain Badge
+      let captainBadge = node.querySelector('.captain-badge');
+      if (player.isCaptain) {
+        if (!captainBadge) {
+          captainBadge = document.createElement('div');
+          captainBadge.className = 'captain-badge';
+          captainBadge.textContent = 'C';
+          node.querySelector('.player-avatar-wrapper').appendChild(captainBadge);
+        }
+      } else {
+        if (captainBadge) {
+          captainBadge.remove();
+        }
+      }
+
       // Update role indicator
       const roleIndicator = node.querySelector('.player-role-indicator');
       roleIndicator.className = `player-role-indicator ${coords.role}`;
@@ -303,6 +342,42 @@ function renderSquad() {
         target.innerHTML = `<img class="player-photo" src="${player.photo}" alt="${player.name}">`;
       } else {
         target.innerHTML = getJerseySvgContent();
+      }
+
+      // Update details card info
+      const detailCard = node.querySelector('.player-detail-card');
+      if (detailCard) {
+        detailCard.querySelector('.detail-card-name').textContent = player.name;
+        detailCard.querySelector('.detail-card-number').textContent = player.number;
+        
+        const roleBadge = detailCard.querySelector('.detail-card-role');
+        roleBadge.textContent = player.role;
+        roleBadge.className = `detail-card-role ${player.role}`;
+
+        const capTag = detailCard.querySelector('.detail-card-captain-tag');
+        if (player.isCaptain) {
+          capTag.style.display = 'block';
+        } else {
+          capTag.style.display = 'none';
+        }
+
+        const avatarTarget = detailCard.querySelector('.detail-card-avatar');
+        if (player.photo) {
+          avatarTarget.innerHTML = `<img class="detail-card-img" src="${player.photo}" alt="${player.name}">`;
+        } else {
+          avatarTarget.innerHTML = `
+            <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%; --primary-color: ${primaryColor}; --secondary-color: ${secondaryColor};">
+              <path d="M15 32L30 20L38 30L25 45L15 32Z" fill="var(--secondary-color)" />
+              <path d="M85 32L70 20L62 30L75 45L85 32Z" fill="var(--secondary-color)" />
+              <path d="M30 20H70V85H30V20Z" fill="var(--primary-color)" />
+              <path d="M40 20C40 26 60 26 60 20H40Z" fill="var(--secondary-color)" />
+              <path d="M18 30L25 24" stroke="var(--primary-color)" stroke-width="2" />
+              <path d="M82 30L75 24" stroke="var(--primary-color)" stroke-width="2" />
+              <path d="M48 25V85" stroke="var(--secondary-color)" stroke-width="4" opacity="0.8" />
+              <path d="M52 25V85" stroke="var(--secondary-color)" stroke-width="4" opacity="0.8" />
+            </svg>
+          `;
+        }
       }
     } else {
       node.style.display = 'none';
@@ -342,10 +417,13 @@ function renderSquad() {
         `;
       }
 
+      let captainBadgeHtml = player.isCaptain ? '<div class="captain-badge">C</div>' : '';
+
       card.innerHTML = `
         <div class="bench-player-avatar">
           ${avatarContent}
           <div class="bench-player-number">${player.number}</div>
+          ${captainBadgeHtml}
         </div>
         <div class="bench-player-name">${player.name}</div>
       `;
@@ -645,18 +723,39 @@ function setupEventListeners() {
   const deletePlayerBtn = document.getElementById('modal-delete-btn');
   if (deletePlayerBtn) {
     deletePlayerBtn.addEventListener('click', () => {
-      if (confirm("আপনি কি এই খেলোয়াড়কে দল থেকে বাদ দিতে চান?")) {
-        const activeCount = getActivePlayerCount();
-        if (players.length <= activeCount) {
-          alert(`ফরমেশনের জন্য কমপক্ষে ${activeCount} জন খেলোয়াড় থাকতে হবে!`);
-          return;
-        }
-        players = players.filter(p => p.id !== editingPlayerId);
-        closeEditModal();
-        renderSquad();
+      const activeCount = getActivePlayerCount();
+      if (players.length <= activeCount) {
+        showCustomAlert(
+          "সীমা অতিক্রম করেছে",
+          `ফরমেশনের জন্য কমপক্ষে ${activeCount} জন খেলোয়াড় থাকতে হবে!`
+        );
+        return;
       }
+      showCustomConfirm(
+        "খেলোয়াড় বাদ দিন",
+        "আপনি কি এই খেলোয়াড়কে দল থেকে বাদ দিতে চান?",
+        () => {
+          players = players.filter(p => p.id !== editingPlayerId);
+          closeEditModal();
+          renderSquad();
+        }
+      );
     });
   }
+
+  // Esc key closes modals
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeEditModal();
+    }
+  });
+
+  // Document click closes any open details cards in 3D mode
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.player-node').forEach(node => {
+      node.classList.remove('show-detail-card');
+    });
+  });
 }
 
 // Apply team colors as local CSS variables on the pitch container
@@ -668,38 +767,42 @@ function updatePitchColors() {
 
 // Reset data to defaults
 function resetLineup() {
-  if (confirm("আপনি কি সমস্ত প্লেয়ার পরিবর্তন বাতিল করে রিসেট করতে চান?")) {
-    players = JSON.parse(JSON.stringify(defaultPlayers));
-    
-    // Reset fields in UI
-    teamName = "আমার দল";
-    document.getElementById('team-name-input').value = teamName;
-    document.getElementById('pitch-team-title').textContent = teamName;
+  showCustomConfirm(
+    "রিসেট নিশ্চিত করুন",
+    "আপনি কি সমস্ত প্লেয়ার পরিবর্তন বাতিল করে রিসেট করতে চান?",
+    () => {
+      players = JSON.parse(JSON.stringify(defaultPlayers));
+      
+      // Reset fields in UI
+      teamName = "আমার দল";
+      document.getElementById('team-name-input').value = teamName;
+      document.getElementById('pitch-team-title').textContent = teamName;
 
-    primaryColor = "#e11d48";
-    secondaryColor = "#ffffff";
-    
-    document.getElementById('primary-color').value = primaryColor;
-    document.getElementById('primary-color').nextElementSibling.textContent = primaryColor;
-    
-    document.getElementById('secondary-color').value = secondaryColor;
-    document.getElementById('secondary-color').nextElementSibling.textContent = secondaryColor;
+      primaryColor = "#e11d48";
+      secondaryColor = "#ffffff";
+      
+      document.getElementById('primary-color').value = primaryColor;
+      document.getElementById('primary-color').nextElementSibling.textContent = primaryColor;
+      
+      document.getElementById('secondary-color').value = secondaryColor;
+      document.getElementById('secondary-color').nextElementSibling.textContent = secondaryColor;
 
-    updatePitchColors();
+      updatePitchColors();
 
-    // Re-apply and reset formation to 4-3-3
-    currentFormation = '4-3-3';
-    const formationBtns = document.querySelectorAll('.formation-btn');
-    formationBtns.forEach(btn => {
-      btn.classList.remove('active');
-      if (btn.getAttribute('data-formation') === '4-3-3') {
-        btn.classList.add('active');
-      }
-    });
-    
-    activeCoordinates = JSON.parse(JSON.stringify(formations[currentFormation]));
-    renderSquad();
-  }
+      // Re-apply and reset formation to 4-3-3
+      currentFormation = '4-3-3';
+      const formationBtns = document.querySelectorAll('.formation-btn');
+      formationBtns.forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.getAttribute('data-formation') === '4-3-3') {
+          btn.classList.add('active');
+        }
+      });
+      
+      activeCoordinates = JSON.parse(JSON.stringify(formations[currentFormation]));
+      renderSquad();
+    }
+  );
 }
 
 // Open Player Edit Modal
@@ -715,6 +818,11 @@ function openEditModal(playerId) {
   document.getElementById('player-name-input').value = player.name;
   document.getElementById('player-number-input').value = player.number;
   document.getElementById('player-role-input').value = player.role;
+
+  const captainInput = document.getElementById('player-captain-input');
+  if (captainInput) {
+    captainInput.checked = !!player.isCaptain;
+  }
 
   // Populate Substitutes / Swap select dropdown
   const activeCount = getActivePlayerCount();
@@ -809,7 +917,10 @@ function handlePhotoUpload(e) {
 
   // Verify file size (restrict to 3MB)
   if (file.size > 3 * 1024 * 1024) {
-    alert("অনুগ্রহ করে ৩ মেগাবাইটের কম সাইজের ছবি আপলোড করুন।");
+    showCustomAlert(
+      "ফাইলের আকার বেশি",
+      "অনুগ্রহ করে ৩ মেগাবাইটের কম সাইজের ছবি আপলোড করুন।"
+    );
     return;
   }
 
@@ -842,6 +953,18 @@ function savePlayerDetails() {
   player.number = parseInt(document.getElementById('player-number-input').value, 10) || 1;
   player.role = document.getElementById('player-role-input').value;
   player.photo = editingPlayerPhoto;
+
+  // Update captain status
+  const captainInput = document.getElementById('player-captain-input');
+  if (captainInput) {
+    const isChecked = captainInput.checked;
+    if (isChecked) {
+      players.forEach(p => p.isCaptain = false);
+      player.isCaptain = true;
+    } else {
+      player.isCaptain = false;
+    }
+  }
 
   // Handle Swap Substitution if selected
   const swapSelect = document.getElementById('player-swap-select');
@@ -901,7 +1024,10 @@ function exportPitchImage() {
       exportOverlay.classList.add('hidden');
     }).catch(err => {
       console.error("Export failed: ", err);
-      alert("ইমেজ ডাউনলোড করার সময় একটি সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।");
+      showCustomAlert(
+        "ডাউনলোড ব্যর্থ",
+        "ইমেজ ডাউনলোড করার সময় একটি সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।"
+      );
       
       // Cleanup on error
       if (was3DEnabled) {
@@ -924,7 +1050,8 @@ function addNewPlayerWithoutRender() {
     name: name,
     number: nextId,
     role: "MID",
-    photo: null
+    photo: null,
+    isCaptain: false
   });
 }
 
@@ -1015,6 +1142,89 @@ function parseAndApplyCustomFormation(str) {
   renderSquad();
   return true;
 }
+
+// Custom Confirmation Modal Dialog Helper
+function showCustomConfirm(title, message, onConfirm) {
+  const confirmModal = document.getElementById('confirm-modal');
+  const titleEl = document.getElementById('confirm-title');
+  const messageEl = document.getElementById('confirm-message');
+  const okBtn = document.getElementById('confirm-ok-btn');
+  const cancelBtn = document.getElementById('confirm-cancel-btn');
+
+  titleEl.textContent = title;
+  messageEl.textContent = message;
+
+  // Restore defaults
+  cancelBtn.style.display = 'block';
+  okBtn.textContent = 'হ্যাঁ, নিশ্চিত';
+  okBtn.className = 'btn-danger';
+  okBtn.style.background = '';
+  okBtn.style.boxShadow = '';
+
+  confirmModal.classList.add('active');
+
+  // Clone buttons to clear previous event listeners cleanly
+  const newOkBtn = okBtn.cloneNode(true);
+  const newCancelBtn = cancelBtn.cloneNode(true);
+  okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+  cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+  newOkBtn.addEventListener('click', () => {
+    confirmModal.classList.remove('active');
+    if (onConfirm) onConfirm();
+  });
+
+  newCancelBtn.addEventListener('click', () => {
+    confirmModal.classList.remove('active');
+  });
+
+  const clickOutsideHandler = (e) => {
+    if (e.target === confirmModal) {
+      confirmModal.classList.remove('active');
+      confirmModal.removeEventListener('click', clickOutsideHandler);
+    }
+  };
+  confirmModal.addEventListener('click', clickOutsideHandler);
+}
+
+// Custom Alert Modal Helper
+function showCustomAlert(title, message, onClose) {
+  const confirmModal = document.getElementById('confirm-modal');
+  const titleEl = document.getElementById('confirm-title');
+  const messageEl = document.getElementById('confirm-message');
+  const okBtn = document.getElementById('confirm-ok-btn');
+  const cancelBtn = document.getElementById('confirm-cancel-btn');
+
+  titleEl.textContent = title;
+  messageEl.textContent = message;
+
+  // Configure OK button for general alert
+  cancelBtn.style.display = 'none';
+  okBtn.textContent = 'ঠিক আছে';
+  okBtn.className = 'btn-primary';
+  okBtn.style.background = 'linear-gradient(135deg, var(--primary-accent), #0f766e)';
+  okBtn.style.boxShadow = 'none';
+
+  confirmModal.classList.add('active');
+
+  const newOkBtn = okBtn.cloneNode(true);
+  okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+
+  newOkBtn.addEventListener('click', () => {
+    confirmModal.classList.remove('active');
+    if (onClose) onClose();
+  });
+
+  const clickOutsideHandler = (e) => {
+    if (e.target === confirmModal) {
+      confirmModal.classList.remove('active');
+      confirmModal.removeEventListener('click', clickOutsideHandler);
+      if (onClose) onClose();
+    }
+  };
+  confirmModal.addEventListener('click', clickOutsideHandler);
+}
+
 
 // Start Application on Load
 window.addEventListener('DOMContentLoaded', initApp);

@@ -264,6 +264,11 @@
               </select>
             </div>
 
+            <div style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-top: 0.25rem; margin-bottom: 0.5rem;">
+              <input type="checkbox" id="player-captain-input" style="width: 18px; height: 18px; cursor: pointer; margin: 0; accent-color: var(--primary-accent);">
+              <label for="player-captain-input" style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); cursor: pointer; margin: 0; user-select: none;">দলের অধিনায়ক (Captain)</label>
+            </div>
+
             <div class="input-field" id="swap-player-field">
               <label for="player-swap-select">খেলোয়াড় বদল করুন (Substitution / Swap)</label>
               <select id="player-swap-select">
@@ -292,6 +297,27 @@
         <p>লাইনআপ ইমেজ তৈরি হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন...</p>
       </div>
     </div>
+
+    <!-- Custom Confirmation Modal -->
+    <div id="confirm-modal" class="modal-overlay">
+      <div class="modal-card confirm-card">
+        <div class="confirm-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+        </div>
+        <h3 id="confirm-title">নিশ্চিতকরণ</h3>
+        <p id="confirm-message">আপনি কি নিশ্চিত?</p>
+        <div class="confirm-actions">
+          <button type="button" id="confirm-cancel-btn" class="btn-secondary">বাতিল</button>
+          <button type="button" id="confirm-ok-btn" class="btn-danger">হ্যাঁ, নিশ্চিত</button>
+        </div>
+      </div>
+    </div>
+
+
 
     <script type="module" src="/src/main.js"></script>
   </body>
