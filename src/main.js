@@ -172,6 +172,8 @@ let is3DEnabled = false;
 let teamName = "আমার দল";
 let primaryColor = "#e11d48";
 let secondaryColor = "#ffffff";
+let slideshowIntervalId = null;
+let currentSlideshowIndex = -1;
 
 // Editing Session Variables
 let editingPlayerId = null;
@@ -248,6 +250,14 @@ function initApp() {
         node.classList.remove('was-dragged');
         return;
       }
+
+      // If slideshow is running, turn it off on click
+      if (slideshowIntervalId) {
+        const toggle = document.getElementById('slideshow-toggle');
+        if (toggle) toggle.checked = false;
+        stopSlideshow();
+      }
+
       const playerId = parseInt(node.getAttribute('data-player-id'), 10);
       if (!playerId) return;
 
@@ -461,6 +471,13 @@ function startDrag(e) {
     return;
   }
 
+  // If slideshow is running, turn it off on drag start
+  if (slideshowIntervalId) {
+    const toggle = document.getElementById('slideshow-toggle');
+    if (toggle) toggle.checked = false;
+    stopSlideshow();
+  }
+
   e.preventDefault();
 
   activeDragNode = node;
@@ -672,14 +689,31 @@ function setupEventListeners() {
   // 3D Perspective Toggle
   const perspectiveToggle = document.getElementById('perspective-toggle');
   const pitchViewport = document.querySelector('.pitch-viewport');
+  const slideshowToggleWrapper = document.getElementById('slideshow-toggle-wrapper');
+  const slideshowToggle = document.getElementById('slideshow-toggle');
+
   perspectiveToggle.addEventListener('change', (e) => {
     is3DEnabled = e.target.checked;
     if (is3DEnabled) {
       pitchViewport.classList.add('mode-3d');
+      if (slideshowToggleWrapper) slideshowToggleWrapper.style.display = 'flex';
     } else {
       pitchViewport.classList.remove('mode-3d');
+      if (slideshowToggleWrapper) slideshowToggleWrapper.style.display = 'none';
+      if (slideshowToggle) slideshowToggle.checked = false;
+      stopSlideshow();
     }
   });
+
+  if (slideshowToggle) {
+    slideshowToggle.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        startSlideshow();
+      } else {
+        stopSlideshow();
+      }
+    });
+  }
 
   // Reset Button
   document.getElementById('reset-btn').addEventListener('click', resetLineup);
@@ -1225,6 +1259,50 @@ function showCustomAlert(title, message, onClose) {
   confirmModal.addEventListener('click', clickOutsideHandler);
 }
 
+// Start Slideshow presentation in 3D Mode
+function startSlideshow() {
+  stopSlideshow();
+  const activeCount = getActivePlayerCount();
+  if (activeCount === 0 || players.length === 0) return;
+
+  currentSlideshowIndex = 0;
+  
+  const step = () => {
+    const activeCount = getActivePlayerCount();
+    const playableCount = Math.min(activeCount, players.length);
+    if (playableCount === 0) return;
+
+    // Hide details & highlights from all nodes
+    document.querySelectorAll('.player-node').forEach(node => {
+      node.classList.remove('show-detail-card', 'slideshow-active');
+    });
+
+    const activeIndex = currentSlideshowIndex % playableCount;
+    const activeNode = document.getElementById(`player-slot-${activeIndex}`);
+    if (activeNode) {
+      activeNode.classList.add('show-detail-card', 'slideshow-active');
+    }
+
+    currentSlideshowIndex++;
+  };
+
+  // Run first step immediately
+  step();
+
+  // Cycle every 3 seconds
+  slideshowIntervalId = setInterval(step, 3000);
+}
+
+// Stop Slideshow presentation
+function stopSlideshow() {
+  if (slideshowIntervalId) {
+    clearInterval(slideshowIntervalId);
+    slideshowIntervalId = null;
+  }
+  document.querySelectorAll('.player-node').forEach(node => {
+    node.classList.remove('show-detail-card', 'slideshow-active');
+  });
+}
 
 // Start Application on Load
 window.addEventListener('DOMContentLoaded', initApp);

@@ -1610,3 +1610,19 @@ input:checked + .slider:before {
 .pitch-viewport.mode-3d .player-edit-icon {
   display: none !important;
 }
+
+/* Active player node highlight during slideshow in 3D mode */
+.pitch-viewport.mode-3d .player-node.slideshow-active {
+  transform: translate(-50%, -55%) scale(1.12) rotateX(-25deg) rotateZ(3deg) !important;
+  z-index: 105 !important;
+}
+
+.pitch-viewport.mode-3d .player-node.slideshow-active .player-avatar-wrapper {
+  border-color: #a855f7 !important;
+  box-shadow: 0 0 25px #a855f7, 0 8px 16px rgba(0, 0, 0, 0.6);
+}
+
+/* Prevent clipping of player details card at the boundaries of the pitch in 3D mode */
+.pitch-viewport.mode-3d .football-pitch {
+  overflow: visible !important;
+}
