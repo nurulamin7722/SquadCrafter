@@ -1,1308 +1,1013 @@
 import html2canvas from 'html2canvas';
 
-// Default Squad Data
+/* =========================================================
+   CONSTANTS & DATA
+   ========================================================= */
+
+const STORAGE_KEY = 'squadcrafter:v2';
+const MAX_SLOTS = 11; // 1 GK + up to 10 outfield
+
+const BN_DIGITS = '০১২৩৪৫৬৭৮৯';
+const toBn = (n) => String(n).replace(/\d/g, (d) => BN_DIGITS[d]);
+const fromBn = (s) => s.replace(/[০-৯]/g, (d) => String(BN_DIGITS.indexOf(d)));
+const clone = (v) => JSON.parse(JSON.stringify(v));
+
 const defaultPlayers = [
-  { id: 1, name: "ই. মার্টিনেজ", number: 1, role: "GK", photo: null, isCaptain: false },
-  { id: 2, name: "এ. রবার্টসন", number: 26, role: "DEF", photo: null, isCaptain: false },
-  { id: 3, name: "ভি. ভ্যান ডাইক", number: 4, role: "DEF", photo: null, isCaptain: false },
-  { id: 4, name: "ডব্লিউ. সালিবা", number: 2, role: "DEF", photo: null, isCaptain: false },
-  { id: 5, name: "এ. হাকিমি", number: 2, role: "DEF", photo: null, isCaptain: false },
-  { id: 6, name: "কে. ডি ব্রুইনা", number: 17, role: "MID", photo: null, isCaptain: false },
-  { id: 7, name: "রদ্রি", number: 16, role: "MID", photo: null, isCaptain: false },
-  { id: 8, name: "জে. বেলিংহাম", number: 5, role: "MID", photo: null, isCaptain: false },
-  { id: 9, name: "এল. মেসি", number: 10, role: "FWD", photo: null, isCaptain: true },
-  { id: 10, name: "ই. হালান্ড", number: 9, role: "FWD", photo: null, isCaptain: false },
-  { id: 11, name: "কে. এমবাপ্পে", number: 7, role: "FWD", photo: null, isCaptain: false }
+  { id: 1, name: 'ই. মার্টিনেজ', number: 1, role: 'GK', photo: null, isCaptain: false },
+  { id: 2, name: 'এ. রবার্টসন', number: 26, role: 'DEF', photo: null, isCaptain: false },
+  { id: 3, name: 'ভি. ভ্যান ডাইক', number: 4, role: 'DEF', photo: null, isCaptain: false },
+  { id: 4, name: 'ডব্লিউ. সালিবা', number: 12, role: 'DEF', photo: null, isCaptain: false },
+  { id: 5, name: 'এ. হাকিমি', number: 2, role: 'DEF', photo: null, isCaptain: false },
+  { id: 6, name: 'কে. ডি ব্রুইনা', number: 17, role: 'MID', photo: null, isCaptain: false },
+  { id: 7, name: 'রদ্রি', number: 16, role: 'MID', photo: null, isCaptain: false },
+  { id: 8, name: 'জে. বেলিংহাম', number: 5, role: 'MID', photo: null, isCaptain: false },
+  { id: 9, name: 'এল. মেসি', number: 10, role: 'FWD', photo: null, isCaptain: true },
+  { id: 10, name: 'ই. হালান্ড', number: 9, role: 'FWD', photo: null, isCaptain: false },
+  { id: 11, name: 'কে. এমবাপ্পে', number: 7, role: 'FWD', photo: null, isCaptain: false }
 ];
 
-// Deep copy of default players for runtime edits
-let players = JSON.parse(JSON.stringify(defaultPlayers));
+const GENERIC_NAMES = ['কাহন', 'রাইহান', 'সোহেল', 'সাকিব', 'তামিম', 'মুশফিক', 'রিয়াদ', 'তাসকিন', 'মোস্তাফিজ', 'লিটন', 'মিরাজ'];
 
-// Formations Coordinates Layouts (values in percentage x, y)
-// x is left-to-right (0 to 100), y is top-to-bottom (0 to 100)
-const formations = {
+// Team sizes (players per side, GK included) and the formations offered for each.
+const FORMATS = [
+  { size: 11, formations: ['4-3-3', '4-4-2', '3-5-2', '4-2-3-1', '5-3-2'] },
+  { size: 10, formations: ['4-4-1', '4-3-2', '3-4-2'] },
+  { size: 8, formations: ['3-3-1', '3-2-2', '2-3-2'] },
+  { size: 7, formations: ['2-3-1', '3-2-1', '2-2-2'] },
+  { size: 6, formations: ['2-2-1', '3-1-1', '2-1-2', '1-3-1', '1-2-2'] },
+  { size: 5, formations: ['2-1-1', '1-2-1', '2-2'] }
+];
+
+// Hand-tuned layouts (x: 0–100 left→right, y: 0–100 top→bottom). Anything not listed is generated.
+const PRESET_LAYOUTS = {
   '4-3-3': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'DEF', x: 15, y: 72 },
-    { role: 'DEF', x: 38, y: 75 },
-    { role: 'DEF', x: 62, y: 75 },
-    { role: 'DEF', x: 85, y: 72 },
-    { role: 'MID', x: 25, y: 52 },
-    { role: 'MID', x: 50, y: 56 },
-    { role: 'MID', x: 75, y: 52 },
-    { role: 'FWD', x: 20, y: 25 },
-    { role: 'FWD', x: 50, y: 20 },
-    { role: 'FWD', x: 80, y: 25 }
+    ['GK', 50, 88], ['DEF', 15, 72], ['DEF', 38, 75], ['DEF', 62, 75], ['DEF', 85, 72],
+    ['MID', 25, 52], ['MID', 50, 56], ['MID', 75, 52], ['FWD', 20, 25], ['FWD', 50, 20], ['FWD', 80, 25]
   ],
   '4-4-2': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'DEF', x: 15, y: 72 },
-    { role: 'DEF', x: 38, y: 75 },
-    { role: 'DEF', x: 62, y: 75 },
-    { role: 'DEF', x: 85, y: 72 },
-    { role: 'MID', x: 15, y: 48 },
-    { role: 'MID', x: 38, y: 52 },
-    { role: 'MID', x: 62, y: 52 },
-    { role: 'MID', x: 85, y: 48 },
-    { role: 'FWD', x: 35, y: 22 },
-    { role: 'FWD', x: 65, y: 22 }
+    ['GK', 50, 88], ['DEF', 15, 72], ['DEF', 38, 75], ['DEF', 62, 75], ['DEF', 85, 72],
+    ['MID', 15, 48], ['MID', 38, 52], ['MID', 62, 52], ['MID', 85, 48], ['FWD', 35, 22], ['FWD', 65, 22]
   ],
   '3-5-2': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'DEF', x: 25, y: 75 },
-    { role: 'DEF', x: 50, y: 77 },
-    { role: 'DEF', x: 75, y: 75 },
-    { role: 'MID', x: 12, y: 50 },
-    { role: 'MID', x: 33, y: 52 },
-    { role: 'MID', x: 50, y: 56 },
-    { role: 'MID', x: 67, y: 52 },
-    { role: 'MID', x: 88, y: 50 },
-    { role: 'FWD', x: 35, y: 22 },
-    { role: 'FWD', x: 65, y: 22 }
+    ['GK', 50, 88], ['DEF', 25, 75], ['DEF', 50, 77], ['DEF', 75, 75],
+    ['MID', 12, 50], ['MID', 33, 52], ['MID', 50, 56], ['MID', 67, 52], ['MID', 88, 50], ['FWD', 35, 22], ['FWD', 65, 22]
   ],
   '4-2-3-1': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'DEF', x: 15, y: 72 },
-    { role: 'DEF', x: 38, y: 75 },
-    { role: 'DEF', x: 62, y: 75 },
-    { role: 'DEF', x: 85, y: 72 },
-    { role: 'MID', x: 35, y: 58 },
-    { role: 'MID', x: 65, y: 58 },
-    { role: 'MID', x: 22, y: 38 },
-    { role: 'MID', x: 50, y: 36 },
-    { role: 'MID', x: 78, y: 38 },
-    { role: 'FWD', x: 50, y: 20 }
+    ['GK', 50, 88], ['DEF', 15, 72], ['DEF', 38, 75], ['DEF', 62, 75], ['DEF', 85, 72],
+    ['MID', 35, 58], ['MID', 65, 58], ['MID', 22, 38], ['MID', 50, 36], ['MID', 78, 38], ['FWD', 50, 20]
   ],
   '5-3-2': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'DEF', x: 12, y: 70 },
-    { role: 'DEF', x: 30, y: 75 },
-    { role: 'DEF', x: 50, y: 77 },
-    { role: 'DEF', x: 70, y: 75 },
-    { role: 'DEF', x: 88, y: 70 },
-    { role: 'MID', x: 28, y: 50 },
-    { role: 'MID', x: 50, y: 54 },
-    { role: 'MID', x: 72, y: 50 },
-    { role: 'FWD', x: 35, y: 22 },
-    { role: 'FWD', x: 65, y: 22 }
-  ],
-  '4-4-1': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'DEF', x: 15, y: 72 },
-    { role: 'DEF', x: 38, y: 75 },
-    { role: 'DEF', x: 62, y: 75 },
-    { role: 'DEF', x: 85, y: 72 },
-    { role: 'MID', x: 15, y: 48 },
-    { role: 'MID', x: 38, y: 52 },
-    { role: 'MID', x: 62, y: 52 },
-    { role: 'MID', x: 85, y: 48 },
-    { role: 'FWD', x: 50, y: 22 }
-  ],
-  '4-3-2': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'DEF', x: 15, y: 72 },
-    { role: 'DEF', x: 38, y: 75 },
-    { role: 'DEF', x: 62, y: 75 },
-    { role: 'DEF', x: 85, y: 72 },
-    { role: 'MID', x: 25, y: 52 },
-    { role: 'MID', x: 50, y: 56 },
-    { role: 'MID', x: 75, y: 52 },
-    { role: 'FWD', x: 35, y: 22 },
-    { role: 'FWD', x: 65, y: 22 }
-  ],
-  '3-4-2': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'DEF', x: 25, y: 75 },
-    { role: 'DEF', x: 50, y: 77 },
-    { role: 'DEF', x: 75, y: 75 },
-    { role: 'MID', x: 15, y: 48 },
-    { role: 'MID', x: 38, y: 52 },
-    { role: 'MID', x: 62, y: 52 },
-    { role: 'MID', x: 85, y: 48 },
-    { role: 'FWD', x: 35, y: 22 },
-    { role: 'FWD', x: 65, y: 22 }
-  ],
-  '2-3-1': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'DEF', x: 30, y: 72 },
-    { role: 'DEF', x: 70, y: 72 },
-    { role: 'MID', x: 20, y: 48 },
-    { role: 'MID', x: 50, y: 52 },
-    { role: 'MID', x: 80, y: 48 },
-    { role: 'FWD', x: 50, y: 22 }
-  ],
-  '3-2-1': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'DEF', x: 25, y: 72 },
-    { role: 'DEF', x: 50, y: 75 },
-    { role: 'DEF', x: 75, y: 72 },
-    { role: 'MID', x: 32, y: 48 },
-    { role: 'MID', x: 68, y: 48 },
-    { role: 'FWD', x: 50, y: 22 }
-  ],
-  '2-2-2': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'DEF', x: 30, y: 72 },
-    { role: 'DEF', x: 70, y: 72 },
-    { role: 'MID', x: 32, y: 48 },
-    { role: 'MID', x: 68, y: 48 },
-    { role: 'FWD', x: 35, y: 22 },
-    { role: 'FWD', x: 65, y: 22 }
-  ],
-  '2-1-1': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'DEF', x: 30, y: 72 },
-    { role: 'DEF', x: 70, y: 72 },
-    { role: 'MID', x: 50, y: 48 },
-    { role: 'FWD', x: 50, y: 22 }
-  ],
-  '1-2-1': [
-    { role: 'GK', x: 50, y: 88 },
-    { role: 'DEF', x: 50, y: 72 },
-    { role: 'MID', x: 33, y: 48 },
-    { role: 'MID', x: 67, y: 48 },
-    { role: 'FWD', x: 50, y: 22 }
+    ['GK', 50, 88], ['DEF', 12, 70], ['DEF', 30, 75], ['DEF', 50, 77], ['DEF', 70, 75], ['DEF', 88, 70],
+    ['MID', 28, 50], ['MID', 50, 54], ['MID', 72, 50], ['FWD', 35, 22], ['FWD', 65, 22]
   ]
 };
 
-// Global App State
-let currentFormation = '4-3-3';
-let currentTheme = 'classic';
-let is3DEnabled = false;
-let teamName = "আমার দল";
-let primaryColor = "#e11d48";
-let secondaryColor = "#ffffff";
-let slideshowIntervalId = null;
-let currentSlideshowIndex = -1;
+const KIT_PRESETS = [
+  ['#e11d48', '#ffffff'],
+  ['#1d4ed8', '#ffffff'],
+  ['#15803d', '#fde047'],
+  ['#111827', '#f59e0b'],
+  ['#7c3aed', '#f5f5f5'],
+  ['#f97316', '#111827'],
+  ['#0ea5e9', '#0f172a'],
+  ['#ffffff', '#b91c1c']
+];
 
-// Editing Session Variables
-let editingPlayerId = null;
-let editingPlayerPhoto = null;
+const DEFAULTS = {
+  teamName: 'আমার দল',
+  kit1: '#e11d48',
+  kit2: '#ffffff',
+  gkKit: '#facc15',
+  theme: 'classic',
+  formation: '4-3-3'
+};
 
-// Drag and Drop State Variables
-let activeDragNode = null;
-let dragStartX = 0;
-let dragStartY = 0;
-let pitchRect = null;
+/* =========================================================
+   FORMATION LAYOUTS
+   ========================================================= */
 
-// Fallback Jersey SVG Content
-const getJerseySvgContent = () => `
-  <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" class="jersey-fallback-svg">
-    <!-- sleeves -->
-    <path d="M15 32L30 20L38 30L25 45L15 32Z" fill="var(--secondary-color)" />
-    <path d="M85 32L70 20L62 30L75 45L85 32Z" fill="var(--secondary-color)" />
-    <!-- main torso -->
-    <path d="M30 20H70V85H30V20Z" fill="var(--primary-color)" />
-    <!-- collar -->
-    <path d="M40 20C40 26 60 26 60 20H40Z" fill="var(--secondary-color)" />
-    <!-- sleeve stripes -->
-    <path d="M18 30L25 24" stroke="var(--primary-color)" stroke-width="2" />
-    <path d="M82 30L75 24" stroke="var(--primary-color)" stroke-width="2" />
-    <!-- center design stripes -->
-    <path d="M48 25V85" stroke="var(--secondary-color)" stroke-width="4" opacity="0.8" />
-    <path d="M52 25V85" stroke="var(--secondary-color)" stroke-width="4" opacity="0.8" />
-  </svg>
-`;
-
-// Initialize Field & Player Elements
-// Active field coordinates
-let activeCoordinates = JSON.parse(JSON.stringify(formations[currentFormation]));
-
-// Initialize Field & Player Elements
-function initApp() {
-  const container = document.getElementById('players-container');
-  container.innerHTML = '';
-
-  // Generate 11 persistent player cards for the 11 slots on the field
-  for (let i = 0; i < 11; i++) {
-    const node = document.createElement('div');
-    node.className = 'player-node';
-    node.id = `player-slot-${i}`;
-    node.setAttribute('data-slot-index', i);
-
-    node.innerHTML = `
-      <div class="player-avatar-wrapper">
-        <div class="player-role-indicator"></div>
-        <div class="avatar-render-target"></div>
-        <div class="player-number-badge"></div>
-        <div class="player-edit-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z"/></svg>
-        </div>
-      </div>
-      <div class="player-name-badge">
-        <span></span>
-      </div>
-      <div class="player-detail-card">
-        <div class="detail-card-captain-tag">CAPTAIN</div>
-        <div class="detail-card-header">
-          <span class="detail-card-role">MID</span>
-          <span class="detail-card-number">10</span>
-        </div>
-        <div class="detail-card-avatar"></div>
-        <div class="detail-card-name">এল. মেসি</div>
-      </div>
-    `;
-
-    // Click handler to edit/swap this player
-    node.addEventListener('click', (e) => {
-      // Don't open modal if they dragged and let go
-      if (node.classList.contains('was-dragged')) {
-        node.classList.remove('was-dragged');
-        return;
-      }
-
-      // If slideshow is running, turn it off on click
-      if (slideshowIntervalId) {
-        const toggle = document.getElementById('slideshow-toggle');
-        if (toggle) toggle.checked = false;
-        stopSlideshow();
-      }
-
-      const playerId = parseInt(node.getAttribute('data-player-id'), 10);
-      if (!playerId) return;
-
-      if (is3DEnabled) {
-        // In 3D mode, first click toggles details card, second click opens edit modal
-        if (node.classList.contains('show-detail-card')) {
-          node.classList.remove('show-detail-card');
-          openEditModal(playerId);
-        } else {
-          // Hide other detail cards
-          document.querySelectorAll('.player-node').forEach(n => {
-            n.classList.remove('show-detail-card');
-          });
-          node.classList.add('show-detail-card');
-          e.stopPropagation(); // prevent document click listener from hiding it immediately
-        }
-      } else {
-        openEditModal(playerId);
-      }
-    });
-
-    container.appendChild(node);
-  }
-
-  // Apply colors to the pitch element variables
-  updatePitchColors();
-  
-  // Attach DOM events
-  setupEventListeners();
-
-  // Enable manual drag-and-drop positioning
-  enablePlayerDragging();
-
-  // Render the current squad state (active players & bench)
-  renderSquad();
+function parseFormation(str) {
+  const clean = fromBn(String(str)).replace(/[,\s.]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  if (!/^\d+(-\d+)*$/.test(clean)) return null;
+  const parts = clean.split('-').map(Number);
+  if (parts.some((n) => n < 1)) return null;
+  const sum = parts.reduce((a, b) => a + b, 0);
+  if (sum < 1 || sum > MAX_SLOTS - 1) return null;
+  return { name: parts.join('-'), parts };
 }
 
-// Calculate active outfield players + 1 GK
-function getActivePlayerCount() {
-  const cleanStr = currentFormation.replace(/,/g, '-').replace(/\s+/g, '');
-  const parts = cleanStr.split('-').map(num => parseInt(num, 10));
-  const outfieldSum = parts.reduce((a, b) => a + b, 0);
-  return outfieldSum + 1;
-}
+// Spread each outfield line across the pitch, from defence (bottom) to attack (top).
+function buildLayout(parts) {
+  const layout = [{ role: 'GK', x: 50, y: 88 }];
+  const rows = parts.length;
+  const bottom = 73;
+  const top = rows >= 4 ? 19 : 22;
+  const spreadFor = { 1: 0, 2: 20, 3: 28, 4: 35, 5: 39 };
 
-// Render the squad state on the field slots and bench container
-function renderSquad() {
-  const activeCount = getActivePlayerCount();
-  
-  // 1. Render active players on the field slots
-  for (let i = 0; i < 11; i++) {
-    const node = document.getElementById(`player-slot-${i}`);
-    if (!node) continue;
+  parts.forEach((count, i) => {
+    const y = rows === 1 ? 50 : bottom - (i * (bottom - top)) / (rows - 1);
+    let role;
+    if (rows === 1) role = 'MID';
+    else if (i === 0) role = 'DEF';
+    else if (i === rows - 1) role = 'FWD';
+    else role = y > 60 ? 'DEF' : y < 35 ? 'FWD' : 'MID';
 
-    if (i < activeCount && i < players.length) {
-      node.style.display = 'flex';
-      
-      const player = players[i];
-      const coords = activeCoordinates[i];
-      
-      node.setAttribute('data-player-id', player.id);
-      node.style.left = `${coords.x}%`;
-      node.style.top = `${coords.y}%`;
-
-      // Update name & jersey number
-      node.querySelector('.player-number-badge').textContent = player.number;
-      node.querySelector('.player-name-badge span').textContent = player.name;
-
-      // Update Captain Badge
-      let captainBadge = node.querySelector('.captain-badge');
-      if (player.isCaptain) {
-        if (!captainBadge) {
-          captainBadge = document.createElement('div');
-          captainBadge.className = 'captain-badge';
-          captainBadge.textContent = 'C';
-          node.querySelector('.player-avatar-wrapper').appendChild(captainBadge);
-        }
-      } else {
-        if (captainBadge) {
-          captainBadge.remove();
-        }
-      }
-
-      // Update role indicator
-      const roleIndicator = node.querySelector('.player-role-indicator');
-      roleIndicator.className = `player-role-indicator ${coords.role}`;
-      player.role = coords.role; // sync
-
-      // Update avatar photo/jersey
-      const target = node.querySelector('.avatar-render-target');
-      if (player.photo) {
-        target.innerHTML = `<img class="player-photo" src="${player.photo}" alt="${player.name}">`;
-      } else {
-        target.innerHTML = getJerseySvgContent();
-      }
-
-      // Update details card info
-      const detailCard = node.querySelector('.player-detail-card');
-      if (detailCard) {
-        detailCard.querySelector('.detail-card-name').textContent = player.name;
-        detailCard.querySelector('.detail-card-number').textContent = player.number;
-        
-        const roleBadge = detailCard.querySelector('.detail-card-role');
-        roleBadge.textContent = player.role;
-        roleBadge.className = `detail-card-role ${player.role}`;
-
-        const capTag = detailCard.querySelector('.detail-card-captain-tag');
-        if (player.isCaptain) {
-          capTag.style.display = 'block';
-        } else {
-          capTag.style.display = 'none';
-        }
-
-        const avatarTarget = detailCard.querySelector('.detail-card-avatar');
-        if (player.photo) {
-          avatarTarget.innerHTML = `<img class="detail-card-img" src="${player.photo}" alt="${player.name}">`;
-        } else {
-          avatarTarget.innerHTML = `
-            <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%; --primary-color: ${primaryColor}; --secondary-color: ${secondaryColor};">
-              <path d="M15 32L30 20L38 30L25 45L15 32Z" fill="var(--secondary-color)" />
-              <path d="M85 32L70 20L62 30L75 45L85 32Z" fill="var(--secondary-color)" />
-              <path d="M30 20H70V85H30V20Z" fill="var(--primary-color)" />
-              <path d="M40 20C40 26 60 26 60 20H40Z" fill="var(--secondary-color)" />
-              <path d="M18 30L25 24" stroke="var(--primary-color)" stroke-width="2" />
-              <path d="M82 30L75 24" stroke="var(--primary-color)" stroke-width="2" />
-              <path d="M48 25V85" stroke="var(--secondary-color)" stroke-width="4" opacity="0.8" />
-              <path d="M52 25V85" stroke="var(--secondary-color)" stroke-width="4" opacity="0.8" />
-            </svg>
-          `;
-        }
-      }
-    } else {
-      node.style.display = 'none';
-      node.removeAttribute('data-player-id');
-    }
-  }
-
-  // 2. Render bench players
-  const benchList = document.getElementById('bench-list');
-  const benchCountText = document.getElementById('bench-count');
-  if (benchList && benchCountText) {
-    benchList.innerHTML = '';
-
-    const benchPlayers = players.slice(activeCount);
-    benchCountText.textContent = `${benchPlayers.length} জন`;
-
-    benchPlayers.forEach(player => {
-      const card = document.createElement('div');
-      card.className = 'bench-player-card';
-      card.setAttribute('data-player-id', player.id);
-      
-      let avatarContent = '';
-      if (player.photo) {
-        avatarContent = `<img class="bench-player-photo" src="${player.photo}" alt="${player.name}">`;
-      } else {
-        avatarContent = `
-          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" class="bench-player-jersey" style="--primary-color: ${primaryColor}; --secondary-color: ${secondaryColor};">
-            <path d="M15 32L30 20L38 30L25 45L15 32Z" fill="var(--secondary-color)" />
-            <path d="M85 32L70 20L62 30L75 45L85 32Z" fill="var(--secondary-color)" />
-            <path d="M30 20H70V85H30V20Z" fill="var(--primary-color)" />
-            <path d="M40 20C40 26 60 26 60 20H40Z" fill="var(--secondary-color)" />
-            <path d="M18 30L25 24" stroke="var(--primary-color)" stroke-width="2" />
-            <path d="M82 30L75 24" stroke="var(--primary-color)" stroke-width="2" />
-            <path d="M48 25V85" stroke="var(--secondary-color)" stroke-width="4" opacity="0.8" />
-            <path d="M52 25V85" stroke="var(--secondary-color)" stroke-width="4" opacity="0.8" />
-          </svg>
-        `;
-      }
-
-      let captainBadgeHtml = player.isCaptain ? '<div class="captain-badge">C</div>' : '';
-
-      card.innerHTML = `
-        <div class="bench-player-avatar">
-          ${avatarContent}
-          <div class="bench-player-number">${player.number}</div>
-          ${captainBadgeHtml}
-        </div>
-        <div class="bench-player-name">${player.name}</div>
-      `;
-
-      card.addEventListener('click', () => {
-        openEditModal(player.id);
-      });
-
-      benchList.appendChild(card);
-    });
-  }
-}
-
-// Enable manual drag-and-drop for player cards
-function enablePlayerDragging() {
-  const container = document.getElementById('players-container');
-  
-  // Drag start handlers
-  container.addEventListener('mousedown', startDrag);
-  container.addEventListener('touchstart', startDrag, { passive: false });
-
-  // Move & Drop global handlers
-  document.addEventListener('mousemove', dragMove);
-  document.addEventListener('touchmove', dragMove, { passive: false });
-
-  document.addEventListener('mouseup', endDrag);
-  document.addEventListener('touchend', endDrag);
-}
-
-function startDrag(e) {
-  const node = e.target.closest('.player-node');
-  if (!node) return;
-
-  if (e.target.closest('.player-edit-icon') || e.target.closest('.player-name-badge')) {
-    return;
-  }
-
-  // If slideshow is running, turn it off on drag start
-  if (slideshowIntervalId) {
-    const toggle = document.getElementById('slideshow-toggle');
-    if (toggle) toggle.checked = false;
-    stopSlideshow();
-  }
-
-  e.preventDefault();
-
-  activeDragNode = node;
-  node.classList.add('dragging');
-  node.classList.remove('was-dragged');
-
-  // Cache pitch dimensions
-  const pitch = document.getElementById('pitch');
-  pitchRect = pitch.getBoundingClientRect();
-
-  const clientX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
-  const clientY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
-
-  // Calculate mouse offset from the center of the player node
-  const nodeRect = node.getBoundingClientRect();
-  dragStartX = clientX - (nodeRect.left + nodeRect.width / 2);
-  dragStartY = clientY - (nodeRect.top + nodeRect.height / 2);
-}
-
-function dragMove(e) {
-  if (!activeDragNode) return;
-  e.preventDefault();
-
-  const clientX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
-  const clientY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
-
-  const xPixel = clientX - pitchRect.left - dragStartX;
-  const yPixel = clientY - pitchRect.top - dragStartY;
-
-  // Allow dragging slightly outside bounds for bench substitution drops
-  let xPct = (xPixel / pitchRect.width) * 100;
-  let yPct = (yPixel / pitchRect.height) * 100;
-
-  xPct = Math.max(2, Math.min(98, xPct));
-  yPct = Math.max(2, Math.min(108, yPct));
-
-  activeDragNode.style.left = `${xPct}%`;
-  activeDragNode.style.top = `${yPct}%`;
-  activeDragNode.classList.add('was-dragged');
-}
-
-function endDrag(e) {
-  if (!activeDragNode) return;
-
-  const slotIndex = parseInt(activeDragNode.getAttribute('data-slot-index'), 10);
-  const clientX = e.type.startsWith('touch') ? e.changedTouches[0].clientX : e.clientX;
-  const clientY = e.type.startsWith('touch') ? e.changedTouches[0].clientY : e.clientY;
-
-  activeDragNode.classList.remove('dragging');
-
-  // Check if dropped inside the bench container bounding box
-  const bench = document.querySelector('.bench-container');
-  let droppedInBench = false;
-  if (bench) {
-    const benchRect = bench.getBoundingClientRect();
-    droppedInBench = (
-      clientX >= benchRect.left &&
-      clientX <= benchRect.right &&
-      clientY >= benchRect.top &&
-      clientY <= benchRect.bottom
-    );
-  }
-
-  const activeCount = getActivePlayerCount();
-
-  if (droppedInBench && activeCount < players.length) {
-    // Substitute active player with first bench player
-    const temp = players[slotIndex];
-    players[slotIndex] = players[activeCount];
-    players[activeCount] = temp;
-
-    activeDragNode = null;
-    renderSquad();
-    return;
-  }
-
-  // Otherwise, standard coordinate movement on the field
-  let xPct = parseFloat(activeDragNode.style.left);
-  let yPct = parseFloat(activeDragNode.style.top);
-
-  // Constrain to field bounds
-  xPct = Math.max(6, Math.min(94, xPct));
-  yPct = Math.max(6, Math.min(94, yPct));
-
-  activeCoordinates[slotIndex].x = xPct;
-  activeCoordinates[slotIndex].y = yPct;
-
-  // Update dynamic player role according to their pitch zone
-  let calculatedRole = 'MID';
-  if (yPct > 80) calculatedRole = 'GK';
-  else if (yPct > 55) calculatedRole = 'DEF';
-  else if (yPct > 30) calculatedRole = 'MID';
-  else calculatedRole = 'FWD';
-
-  activeCoordinates[slotIndex].role = calculatedRole;
-  
-  const player = players[slotIndex];
-  if (player) {
-    player.role = calculatedRole;
-  }
-
-  // Clear active formation preset button styling
-  const activeBtn = document.querySelector('.formation-btn.active');
-  if (activeBtn) {
-    activeBtn.classList.remove('active');
-  }
-
-  activeDragNode = null;
-  renderSquad();
-}
-
-// Shift player coordinates based on selected formation
-function applyFormation(formationName) {
-  currentFormation = formationName;
-  const layout = formations[formationName];
-  if (!layout) return;
-
-  activeCoordinates = JSON.parse(JSON.stringify(layout));
-  
-  // Ensure we have enough players in squad for this formation
-  const activeCount = getActivePlayerCount();
-  while (players.length < activeCount) {
-    addNewPlayerWithoutRender();
-  }
-
-  renderSquad();
-}
-
-// Setup all page events
-function setupEventListeners() {
-  // Team Name Input
-  const teamInput = document.getElementById('team-name-input');
-  teamInput.addEventListener('input', (e) => {
-    teamName = e.target.value || "আমার দল";
-    document.getElementById('pitch-team-title').textContent = teamName;
-  });
-
-  // Primary Color Picker
-  const primColorInput = document.getElementById('primary-color');
-  primColorInput.addEventListener('input', (e) => {
-    primaryColor = e.target.value;
-    e.target.nextElementSibling.textContent = primaryColor; // update hex text
-    updatePitchColors();
-  });
-
-  // Secondary Color Picker
-  const secColorInput = document.getElementById('secondary-color');
-  secColorInput.addEventListener('input', (e) => {
-    secondaryColor = e.target.value;
-    e.target.nextElementSibling.textContent = secondaryColor; // update hex text
-    updatePitchColors();
-  });
-
-  // Formation Buttons
-  const formationBtns = document.querySelectorAll('.formation-btn');
-  formationBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      formationBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      applyFormation(btn.getAttribute('data-formation'));
-
-      // Clear custom formation UI states
-      document.getElementById('custom-formation-input').value = '';
-      document.getElementById('custom-formation-error').classList.add('hidden');
-      document.getElementById('custom-formation-input').style.borderColor = '';
-    });
-  });
-
-  // Custom Formation Event Listeners
-  const customFormationBtn = document.getElementById('custom-formation-btn');
-  const customFormationInput = document.getElementById('custom-formation-input');
-  const customFormationError = document.getElementById('custom-formation-error');
-
-  customFormationBtn.addEventListener('click', () => {
-    const value = customFormationInput.value.trim();
-    if (!value) return;
-
-    const success = parseAndApplyCustomFormation(value);
-    if (success) {
-      customFormationError.classList.add('hidden');
-      customFormationInput.style.borderColor = '';
-    } else {
-      customFormationError.classList.remove('hidden');
-      customFormationInput.style.borderColor = '#ef4444';
+    const spread = spreadFor[count] ?? 41;
+    for (let j = 0; j < count; j++) {
+      const t = count === 1 ? 0 : (j / (count - 1)) * 2 - 1; // -1 … 1
+      const lift = role === 'FWD' ? 0 : Math.abs(t) * 3; // wide players sit slightly higher
+      layout.push({ role, x: Math.round(50 + t * spread), y: Math.round(y - lift) });
     }
   });
-
-  customFormationInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      customFormationBtn.click();
-    }
-  });
-
-  // Theme Buttons
-  const themeBtns = document.querySelectorAll('.theme-btn');
-  const pitch = document.getElementById('pitch');
-  themeBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      themeBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      
-      const theme = btn.getAttribute('data-theme');
-      pitch.className = `football-pitch theme-${theme}`;
-      currentTheme = theme;
-    });
-  });
-
-  // 3D Perspective Toggle
-  const perspectiveToggle = document.getElementById('perspective-toggle');
-  const pitchViewport = document.querySelector('.pitch-viewport');
-  const slideshowToggleWrapper = document.getElementById('slideshow-toggle-wrapper');
-  const slideshowToggle = document.getElementById('slideshow-toggle');
-
-  perspectiveToggle.addEventListener('change', (e) => {
-    is3DEnabled = e.target.checked;
-    if (is3DEnabled) {
-      pitchViewport.classList.add('mode-3d');
-      if (slideshowToggleWrapper) slideshowToggleWrapper.style.display = 'flex';
-    } else {
-      pitchViewport.classList.remove('mode-3d');
-      if (slideshowToggleWrapper) slideshowToggleWrapper.style.display = 'none';
-      if (slideshowToggle) slideshowToggle.checked = false;
-      stopSlideshow();
-    }
-  });
-
-  if (slideshowToggle) {
-    slideshowToggle.addEventListener('change', (e) => {
-      if (e.target.checked) {
-        startSlideshow();
-      } else {
-        stopSlideshow();
-      }
-    });
-  }
-
-  // Reset Button
-  document.getElementById('reset-btn').addEventListener('click', resetLineup);
-
-  // Download Button
-  document.getElementById('download-btn').addEventListener('click', exportPitchImage);
-
-  // Edit Modal close handlers
-  document.getElementById('modal-close').addEventListener('click', closeEditModal);
-  document.getElementById('modal-cancel-btn').addEventListener('click', closeEditModal);
-  
-  // Close modal when clicking outside the card
-  const modalOverlay = document.getElementById('player-modal');
-  modalOverlay.addEventListener('click', (e) => {
-    if (e.target === modalOverlay) {
-      closeEditModal();
-    }
-  });
-
-  // Modal Form Submission
-  const editForm = document.getElementById('player-edit-form');
-  editForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    savePlayerDetails();
-  });
-
-  // Image Upload Handling
-  const photoInput = document.getElementById('player-photo-input');
-  photoInput.addEventListener('change', handlePhotoUpload);
-
-  // Remove Photo Button inside modal
-  document.getElementById('remove-photo-btn').addEventListener('click', removeEditingPhoto);
-
-  // Add Player Button
-  const addPlayerBtn = document.getElementById('add-player-btn');
-  if (addPlayerBtn) {
-    addPlayerBtn.addEventListener('click', addNewPlayer);
-  }
-
-  // Delete Player Button inside modal
-  const deletePlayerBtn = document.getElementById('modal-delete-btn');
-  if (deletePlayerBtn) {
-    deletePlayerBtn.addEventListener('click', () => {
-      const activeCount = getActivePlayerCount();
-      if (players.length <= activeCount) {
-        showCustomAlert(
-          "সীমা অতিক্রম করেছে",
-          `ফরমেশনের জন্য কমপক্ষে ${activeCount} জন খেলোয়াড় থাকতে হবে!`
-        );
-        return;
-      }
-      showCustomConfirm(
-        "খেলোয়াড় বাদ দিন",
-        "আপনি কি এই খেলোয়াড়কে দল থেকে বাদ দিতে চান?",
-        () => {
-          players = players.filter(p => p.id !== editingPlayerId);
-          closeEditModal();
-          renderSquad();
-        }
-      );
-    });
-  }
-
-  // Esc key closes modals
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      closeEditModal();
-    }
-  });
-
-  // Document click closes any open details cards in 3D mode
-  document.addEventListener('click', () => {
-    document.querySelectorAll('.player-node').forEach(node => {
-      node.classList.remove('show-detail-card');
-    });
-  });
+  return layout;
 }
 
-// Apply team colors as local CSS variables on the pitch container
-function updatePitchColors() {
-  const pitch = document.getElementById('pitch');
-  pitch.style.setProperty('--primary-color', primaryColor);
-  pitch.style.setProperty('--secondary-color', secondaryColor);
+function layoutFor(formationName) {
+  const preset = PRESET_LAYOUTS[formationName];
+  if (preset) return preset.map(([role, x, y]) => ({ role, x, y }));
+  const parsed = parseFormation(formationName);
+  return parsed ? buildLayout(parsed.parts) : null;
 }
 
-// Reset data to defaults
-function resetLineup() {
-  showCustomConfirm(
-    "রিসেট নিশ্চিত করুন",
-    "আপনি কি সমস্ত প্লেয়ার পরিবর্তন বাতিল করে রিসেট করতে চান?",
-    () => {
-      players = JSON.parse(JSON.stringify(defaultPlayers));
-      
-      // Reset fields in UI
-      teamName = "আমার দল";
-      document.getElementById('team-name-input').value = teamName;
-      document.getElementById('pitch-team-title').textContent = teamName;
+/* =========================================================
+   STATE
+   ========================================================= */
 
-      primaryColor = "#e11d48";
-      secondaryColor = "#ffffff";
-      
-      document.getElementById('primary-color').value = primaryColor;
-      document.getElementById('primary-color').nextElementSibling.textContent = primaryColor;
-      
-      document.getElementById('secondary-color').value = secondaryColor;
-      document.getElementById('secondary-color').nextElementSibling.textContent = secondaryColor;
+let state = freshState();
 
-      updatePitchColors();
-
-      // Re-apply and reset formation to 4-3-3
-      currentFormation = '4-3-3';
-      const formationBtns = document.querySelectorAll('.formation-btn');
-      formationBtns.forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.getAttribute('data-formation') === '4-3-3') {
-          btn.classList.add('active');
-        }
-      });
-      
-      activeCoordinates = JSON.parse(JSON.stringify(formations[currentFormation]));
-      renderSquad();
-    }
-  );
-}
-
-// Open Player Edit Modal
-function openEditModal(playerId) {
-  const player = players.find(p => p.id === playerId);
-  if (!player) return;
-
-  editingPlayerId = playerId;
-  editingPlayerPhoto = player.photo;
-
-  // Set inputs
-  document.getElementById('edit-player-id').value = playerId;
-  document.getElementById('player-name-input').value = player.name;
-  document.getElementById('player-number-input').value = player.number;
-  document.getElementById('player-role-input').value = player.role;
-
-  const captainInput = document.getElementById('player-captain-input');
-  if (captainInput) {
-    captainInput.checked = !!player.isCaptain;
-  }
-
-  // Populate Substitutes / Swap select dropdown
-  const activeCount = getActivePlayerCount();
-  const playerIndex = players.findIndex(p => p.id === playerId);
-  const swapSelect = document.getElementById('player-swap-select');
-  const swapField = document.getElementById('swap-player-field');
-  
-  if (swapSelect && swapField) {
-    swapSelect.innerHTML = '<option value="">-- খেলোয়াড় নির্বাচন করুন --</option>';
-    
-    if (playerIndex < activeCount) {
-      // Active player -> list bench players for substitution
-      const benchPlayers = players.slice(activeCount);
-      if (benchPlayers.length === 0) {
-        const opt = document.createElement('option');
-        opt.textContent = "বেঞ্চে কোনো খেলোয়াড় নেই";
-        opt.disabled = true;
-        swapSelect.appendChild(opt);
-      } else {
-        benchPlayers.forEach(p => {
-          const opt = document.createElement('option');
-          opt.value = p.id;
-          opt.textContent = `${p.name} (জার্সি ${p.number}) - বেঞ্চ`;
-          swapSelect.appendChild(opt);
-        });
-      }
-    } else {
-      // Bench player -> list active field players for substitution
-      const activePlayers = players.slice(0, activeCount);
-      activePlayers.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = `${p.name} (জার্সি ${p.number}) - মাঠ`;
-        swapSelect.appendChild(opt);
-      });
-    }
-  }
-
-  // Update photo/jersey modal previews
-  updateModalAvatarPreview();
-
-  // Show Modal
-  document.getElementById('player-modal').classList.add('active');
-}
-
-// Update the avatar representation in the modal card
-function updateModalAvatarPreview() {
-  const previewImg = document.getElementById('modal-photo-preview');
-  const placeholder = document.getElementById('modal-photo-placeholder');
-  const removeBtn = document.getElementById('remove-photo-btn');
-
-  if (editingPlayerPhoto) {
-    previewImg.src = editingPlayerPhoto;
-    previewImg.classList.remove('hidden');
-    placeholder.classList.add('hidden');
-    removeBtn.classList.remove('hidden');
-  } else {
-    previewImg.src = '';
-    previewImg.classList.add('hidden');
-    placeholder.classList.remove('hidden');
-    removeBtn.classList.add('hidden');
-
-    // Fill placeholder with matching team color Jersey
-    placeholder.innerHTML = `
-      <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" class="jersey-fallback-svg" style="--primary-color: ${primaryColor}; --secondary-color: ${secondaryColor};">
-        <path d="M15 32L30 20L38 30L25 45L15 32Z" fill="var(--secondary-color)" />
-        <path d="M85 32L70 20L62 30L75 45L85 32Z" fill="var(--secondary-color)" />
-        <path d="M30 20H70V85H30V20Z" fill="var(--primary-color)" />
-        <path d="M40 20C40 26 60 26 60 20H40Z" fill="var(--secondary-color)" />
-        <path d="M18 30L25 24" stroke="var(--primary-color)" stroke-width="2" />
-        <path d="M82 30L75 24" stroke="var(--primary-color)" stroke-width="2" />
-        <path d="M48 25V85" stroke="var(--secondary-color)" stroke-width="4" opacity="0.8" />
-        <path d="M52 25V85" stroke="var(--secondary-color)" stroke-width="4" opacity="0.8" />
-      </svg>
-    `;
-  }
-}
-
-// Close Modal
-function closeEditModal() {
-  document.getElementById('player-modal').classList.remove('active');
-  editingPlayerId = null;
-  editingPlayerPhoto = null;
-  // Clear file input cache
-  document.getElementById('player-photo-input').value = '';
-}
-
-// Handle image upload and compression to Base64
-function handlePhotoUpload(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  // Verify file size (restrict to 3MB)
-  if (file.size > 3 * 1024 * 1024) {
-    showCustomAlert(
-      "ফাইলের আকার বেশি",
-      "অনুগ্রহ করে ৩ মেগাবাইটের কম সাইজের ছবি আপলোড করুন।"
-    );
-    return;
-  }
-
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    editingPlayerPhoto = event.target.result;
-    updateModalAvatarPreview();
+function freshState() {
+  return {
+    ...DEFAULTS,
+    edited: false, // true once a player has been dragged off the preset spot
+    coords: layoutFor(DEFAULTS.formation),
+    players: clone(defaultPlayers)
   };
-  reader.readAsDataURL(file);
 }
 
-// Remove picture in modal and fall back to jersey
-function removeEditingPhoto() {
-  editingPlayerPhoto = null;
-  document.getElementById('player-photo-input').value = '';
-  updateModalAvatarPreview();
+let is3D = false;
+let slideshowTimer = null;
+let slideshowIndex = 0;
+let editingPlayerId = null;
+let editingPhoto = null;
+
+const activeCount = () => state.coords.length;
+const starters = () => state.players.slice(0, activeCount());
+const benchPlayers = () => state.players.slice(activeCount());
+
+function loadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!saved || !Array.isArray(saved.players) || !Array.isArray(saved.coords)) return;
+    if (saved.coords.length < 1 || saved.coords.length > MAX_SLOTS) return;
+    state = { ...freshState(), ...saved };
+  } catch {
+    /* ignore corrupt / unavailable storage */
+  }
 }
 
-// Save modal changes back to player state
-function savePlayerDetails() {
-  if (editingPlayerId === null) return;
-
-  const playerIndex = players.findIndex(p => p.id === editingPlayerId);
-  if (playerIndex === -1) return;
-
-  const player = players[playerIndex];
-
-  // Update basic details
-  player.name = document.getElementById('player-name-input').value.trim() || player.name;
-  player.number = parseInt(document.getElementById('player-number-input').value, 10) || 1;
-  player.role = document.getElementById('player-role-input').value;
-  player.photo = editingPlayerPhoto;
-
-  // Update captain status
-  const captainInput = document.getElementById('player-captain-input');
-  if (captainInput) {
-    const isChecked = captainInput.checked;
-    if (isChecked) {
-      players.forEach(p => p.isCaptain = false);
-      player.isCaptain = true;
-    } else {
-      player.isCaptain = false;
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Photos can exceed the quota — fall back to saving without them.
+    try {
+      const lite = { ...state, players: state.players.map((p) => ({ ...p, photo: null })) };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(lite));
+    } catch {
+      /* storage unavailable */
     }
   }
-
-  // Handle Swap Substitution if selected
-  const swapSelect = document.getElementById('player-swap-select');
-  if (swapSelect && swapSelect.value) {
-    const swapPlayerId = parseInt(swapSelect.value, 10);
-    const swapIndex = players.findIndex(p => p.id === swapPlayerId);
-    if (swapIndex !== -1) {
-      const temp = players[playerIndex];
-      players[playerIndex] = players[swapIndex];
-      players[swapIndex] = temp;
-    }
-  }
-
-  // Refresh visual elements
-  renderSquad();
-  
-  closeEditModal();
 }
 
-// HTML2Canvas Image Export Functionality
-function exportPitchImage() {
-  const exportOverlay = document.getElementById('export-overlay');
-  const captureTarget = document.getElementById('capture-container');
-  const pitchViewport = document.querySelector('.pitch-viewport');
-
-  // 1. Show loading spinner overlay
-  exportOverlay.classList.remove('hidden');
-
-  // 2. Temporarily disable 3D transform so the image compiles flat
-  const was3DEnabled = is3DEnabled;
-  if (was3DEnabled) {
-    pitchViewport.classList.remove('mode-3d');
-  }
-
-  // 3. Brief timeout to let layout stabilize
-  setTimeout(() => {
-    html2canvas(captureTarget, {
-      scale: 2, // Double resolution for ultra-sharp pixels
-      useCORS: true, // Allow external image URLs
-      logging: false,
-      backgroundColor: null // Keep transparent outline
-    }).then(canvas => {
-      // 4. Download file
-      const link = document.createElement('a');
-      const filename = `${teamName.trim().replace(/\s+/g, '_')}_lineup.png`;
-      
-      link.download = filename;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-
-      // 5. Cleanup: Restore 3D view if it was active
-      if (was3DEnabled) {
-        pitchViewport.classList.add('mode-3d');
-      }
-
-      // 6. Hide loader spinner
-      exportOverlay.classList.add('hidden');
-    }).catch(err => {
-      console.error("Export failed: ", err);
-      showCustomAlert(
-        "ডাউনলোড ব্যর্থ",
-        "ইমেজ ডাউনলোড করার সময় একটি সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।"
-      );
-      
-      // Cleanup on error
-      if (was3DEnabled) {
-        pitchViewport.classList.add('mode-3d');
-      }
-      exportOverlay.classList.add('hidden');
-    });
-  }, 400); // 400ms is perfect for CSS transform transitions to end
+function ensureSquadSize(min) {
+  while (state.players.length < min) addPlayerToState();
 }
 
-// Add generic new player to list without rendering
-function addNewPlayerWithoutRender() {
-  const nextId = players.length > 0 ? Math.max(...players.map(p => p.id)) + 1 : 1;
-  const genericNames = [
-    "কাহন", "রাইহান", "সোহেল", "সাকিব", "তামিম", "মুশফিক", "রিয়াদ", "তাসকিন", "মোস্তাফিজ", "লিটন", "মিরাজ"
-  ];
-  const name = genericNames[(nextId - 1) % genericNames.length] + " (" + nextId + ")";
-  players.push({
+function addPlayerToState() {
+  const nextId = state.players.length ? Math.max(...state.players.map((p) => p.id)) + 1 : 1;
+  const used = new Set(state.players.map((p) => p.number));
+  let number = nextId;
+  while (used.has(number) && number < 99) number++;
+  state.players.push({
     id: nextId,
-    name: name,
-    number: nextId,
-    role: "MID",
+    name: `${GENERIC_NAMES[(nextId - 1) % GENERIC_NAMES.length]} ${toBn(nextId)}`,
+    number,
+    role: 'MID',
     photo: null,
     isCaptain: false
   });
 }
 
-// Add new player card and refresh squad bench
-function addNewPlayer() {
-  addNewPlayerWithoutRender();
-  renderSquad();
+/* =========================================================
+   SVG HELPERS
+   ========================================================= */
+
+// Colours are written inline (not CSS vars) so html2canvas exports them correctly.
+function jerseySvg(main, trim, number = '') {
+  const num = number === '' ? '' :
+    `<text x="50" y="68" text-anchor="middle" font-family="'Barlow Condensed','Arial Narrow',sans-serif" font-weight="800" font-size="${String(number).length > 1 ? 32 : 36}" fill="${trim}">${number}</text>`;
+  return `<svg class="jersey" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M32 10 L20 14 L6 28 L16 40 L24 34 L24 90 L76 90 L76 34 L84 40 L94 28 L80 14 L68 10 C64 18 36 18 32 10 Z" fill="${main}" stroke="rgba(0,0,0,0.35)" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M6 28 L16 40 L20 37 L9.5 24.5 Z" fill="${trim}"/>
+    <path d="M94 28 L84 40 L80 37 L90.5 24.5 Z" fill="${trim}"/>
+    <path d="M32 10 C36 18 64 18 68 10 L64 9 C60 15 40 15 36 9 Z" fill="${trim}"/>
+    ${num}
+  </svg>`;
 }
 
-// Parse and apply dynamically calculated outfield formations (e.g. 4-3-3, 4-1-4-1, 3-4-3)
-function parseAndApplyCustomFormation(str) {
-  // Clean input and allow comma or hyphen separation
-  const cleanStr = str.replace(/,/g, '-').replace(/\s+/g, '');
-  
-  // Validate basic format: digits separated by hyphens (e.g. 4-3-3 or 4-1-4-1)
-  if (!/^\d(-\d)+$/.test(cleanStr)) {
-    return false;
+function kitFor(player, slotRole) {
+  return slotRole === 'GK' ? [state.gkKit, readableOn(state.gkKit)] : [state.kit1, state.kit2];
+}
+
+// Pick black or white text for a given background colour.
+function readableOn(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#111111' : '#ffffff';
+}
+
+function avatarEl(player, role, withNumber) {
+  if (player.photo) {
+    const img = document.createElement('img');
+    img.className = 'avatar-photo';
+    img.src = player.photo;
+    img.alt = '';
+    return img;
+  }
+  const [main, trim] = kitFor(player, role);
+  const wrap = document.createElement('div');
+  wrap.className = 'avatar-jersey';
+  wrap.innerHTML = jerseySvg(main, trim, withNumber ? player.number : '');
+  return wrap;
+}
+
+/* =========================================================
+   RENDERING
+   ========================================================= */
+
+const $ = (id) => document.getElementById(id);
+
+function buildPlayerNodes() {
+  const container = $('players-container');
+  container.innerHTML = '';
+  for (let i = 0; i < MAX_SLOTS; i++) {
+    const node = document.createElement('div');
+    node.className = 'player-node';
+    node.id = `player-slot-${i}`;
+    node.dataset.slotIndex = i;
+    node.innerHTML = `
+      <div class="player-avatar">
+        <div class="avatar-target"></div>
+        <span class="player-number-badge"></span>
+        <span class="captain-badge">C</span>
+      </div>
+      <div class="player-name-plate"><span class="role-dot"></span><span class="player-name"></span></div>
+      <div class="player-detail-card">
+        <div class="detail-top"><span class="role-pill"></span><span class="detail-number"></span></div>
+        <div class="detail-avatar"></div>
+        <div class="detail-name"></div>
+        <div class="detail-captain">CAPTAIN</div>
+      </div>`;
+    node.addEventListener('click', (e) => onPlayerNodeClick(e, node));
+    container.appendChild(node);
+  }
+}
+
+function render() {
+  renderHeader();
+  renderControls();
+  renderPitch();
+  renderBench();
+  renderSquadPanel();
+  saveState();
+}
+
+function renderHeader() {
+  $('pitch-team-title').textContent = state.teamName || DEFAULTS.teamName;
+  const label = state.edited ? `${state.formation} *` : state.formation;
+  $('pitch-meta').textContent = `${toBn(activeCount())} জনের দল · গোলকিপার সহ`;
+  $('match-formation').textContent = label;
+  $('crest').innerHTML = jerseySvg(state.kit1, state.kit2);
+}
+
+function renderControls() {
+  const count = activeCount();
+
+  // Team size chips
+  document.querySelectorAll('.size-chip').forEach((chip) => {
+    const active = Number(chip.dataset.size) === count;
+    chip.classList.toggle('active', active);
+    chip.setAttribute('aria-checked', active);
+  });
+  const isPresetSize = FORMATS.some((f) => f.size === count);
+  $('size-note').textContent = isPresetSize
+    ? `১ জন গোলকিপার + ${toBn(count - 1)} জন আউটফিল্ড খেলোয়াড়`
+    : `কাস্টম: ১ জন গোলকিপার + ${toBn(count - 1)} জন আউটফিল্ড খেলোয়াড়`;
+
+  // Formation buttons for the current size
+  const grid = $('formations-grid');
+  const format = FORMATS.find((f) => f.size === count);
+  grid.innerHTML = '';
+  if (format) {
+    format.formations.forEach((name) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'formation-btn';
+      btn.classList.toggle('active', name === state.formation && !state.edited);
+      btn.innerHTML = `${miniFormationSvg(name)}<span>${name}</span>`;
+      btn.addEventListener('click', () => applyFormation(name));
+      grid.appendChild(btn);
+    });
+  } else {
+    grid.innerHTML = `<p class="empty-note">কাস্টম ফরমেশন: <strong>${state.formation}</strong></p>`;
   }
 
-  const parts = cleanStr.split('-').map(num => parseInt(num, 10));
-  const sum = parts.reduce((a, b) => a + b, 0);
-  
-  // Validate that outfield sum does not exceed 10 players
-  if (sum > 10 || sum < 1) {
-    return false;
-  }
+  // Theme buttons
+  document.querySelectorAll('.theme-btn').forEach((b) => b.classList.toggle('active', b.dataset.theme === state.theme));
 
-  // Generate coordinate layouts dynamically
-  const layout = [];
-  
-  // GK is always first (at bottom center)
-  layout.push({ role: 'GK', x: 50, y: 88 });
-
-  const numRows = parts.length;
-
-  parts.forEach((count, i) => {
-    // Determine row y-coordinate (distributed from y: 75% for defenders to y: 20% for forwards)
-    let y = 75;
-    if (numRows > 1) {
-      y = 75 - (i * (75 - 20) / (numRows - 1));
-    }
-
-    // Determine player role for this row
-    let role = 'MID';
-    if (i === 0) {
-      role = 'DEF';
-    } else if (i === numRows - 1) {
-      role = 'FWD';
-    } else {
-      // Intermediate rows are classified based on vertical coordinates
-      if (y > 60) role = 'DEF';
-      else if (y < 35) role = 'FWD';
-      else role = 'MID';
-    }
-
-    // Determine horizontal spacing margin
-    let margin = 20;
-    if (i === 0) margin = 15; // Defenders row spreads wider
-    if (count === 2) margin = 32; // Dual lines are spaced tighter to center
-    
-    for (let j = 0; j < count; j++) {
-      let x = 50;
-      if (count > 1) {
-        x = margin + (j * (100 - 2 * margin) / (count - 1));
-      }
-      
-      layout.push({ 
-        role: role, 
-        x: Math.round(x), 
-        y: Math.round(y) 
-      });
-    }
+  // Kit inputs
+  [['primary-color', 'primary-hex', 'kit1'], ['secondary-color', 'secondary-hex', 'kit2'], ['gk-color', 'gk-hex', 'gkKit']]
+    .forEach(([input, hex, key]) => {
+      $(input).value = state[key];
+      $(hex).textContent = state[key].toUpperCase();
+    });
+  document.querySelectorAll('.kit-preset').forEach((b) => {
+    b.classList.toggle('active', b.dataset.kit1 === state.kit1 && b.dataset.kit2 === state.kit2);
   });
 
-  // Disable active states on standard preset buttons since it's custom
-  const presetBtns = document.querySelectorAll('.formation-btn');
-  presetBtns.forEach(btn => btn.classList.remove('active'));
+  if (document.activeElement !== $('team-name-input')) $('team-name-input').value = state.teamName;
+}
 
-  activeCoordinates = layout;
-  currentFormation = cleanStr;
+// Tiny dot diagram of a formation, used on the formation buttons.
+function miniFormationSvg(name) {
+  const dots = layoutFor(name)
+    .map((c) => `<circle cx="${(c.x * 0.4 + 2).toFixed(1)}" cy="${(c.y * 0.5 + 1).toFixed(1)}" r="2.4"${c.role === 'GK' ? ' class="gk"' : ''}/>`)
+    .join('');
+  return `<svg class="mini-formation" viewBox="0 0 44 50" aria-hidden="true"><rect x="1" y="1" width="42" height="48" rx="3"/>${dots}</svg>`;
+}
 
-  // Ensure we have enough players in squad for this formation
-  const activeCount = sum + 1;
-  while (players.length < activeCount) {
-    addNewPlayerWithoutRender();
+function renderPitch() {
+  const count = activeCount();
+  const pitch = $('pitch');
+  pitch.className = `football-pitch theme-${state.theme}${count <= 7 ? ' pitch-small' : ''}`;
+
+  for (let i = 0; i < MAX_SLOTS; i++) {
+    const node = $(`player-slot-${i}`);
+    const player = state.players[i];
+    if (i >= count || !player) {
+      node.style.display = 'none';
+      delete node.dataset.playerId;
+      continue;
+    }
+    const coord = state.coords[i];
+    player.role = coord.role;
+    node.style.display = '';
+    node.dataset.playerId = player.id;
+    node.dataset.role = coord.role;
+    node.style.left = `${coord.x}%`;
+    node.style.top = `${coord.y}%`;
+    node.classList.toggle('has-photo', !!player.photo);
+    node.classList.toggle('is-captain', !!player.isCaptain);
+
+    const target = node.querySelector('.avatar-target');
+    target.replaceChildren(avatarEl(player, coord.role, true));
+    node.querySelector('.player-number-badge').textContent = player.number;
+    node.querySelector('.player-name').textContent = player.name;
+
+    const card = node.querySelector('.player-detail-card');
+    const pill = card.querySelector('.role-pill');
+    pill.textContent = coord.role;
+    pill.className = `role-pill ${coord.role}`;
+    card.querySelector('.detail-number').textContent = `#${player.number}`;
+    card.querySelector('.detail-name').textContent = player.name;
+    card.querySelector('.detail-avatar').replaceChildren(avatarEl(player, coord.role, false));
+  }
+}
+
+function renderBench() {
+  const list = $('bench-list');
+  const bench = benchPlayers();
+  $('bench-count').textContent = `${toBn(bench.length)} জন`;
+  list.replaceChildren();
+
+  if (!bench.length) {
+    const empty = document.createElement('p');
+    empty.className = 'bench-empty';
+    empty.textContent = 'বেঞ্চ খালি — মাঠ থেকে খেলোয়াড় এখানে টেনে আনুন';
+    list.appendChild(empty);
+    return;
   }
 
-  renderSquad();
+  bench.forEach((player) => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'bench-player';
+    card.dataset.playerId = player.id;
+
+    const av = document.createElement('div');
+    av.className = 'bench-avatar';
+    av.appendChild(avatarEl(player, player.role, !player.photo));
+    if (player.photo) {
+      const num = document.createElement('span');
+      num.className = 'bench-number';
+      num.textContent = player.number;
+      av.appendChild(num);
+    }
+    if (player.isCaptain) {
+      const c = document.createElement('span');
+      c.className = 'captain-badge show';
+      c.textContent = 'C';
+      av.appendChild(c);
+    }
+    const name = document.createElement('span');
+    name.className = 'bench-name';
+    name.textContent = player.name;
+
+    card.append(av, name);
+    card.addEventListener('click', () => openEditModal(player.id));
+    list.appendChild(card);
+  });
+}
+
+function renderSquadPanel() {
+  const fill = (listId, players, startIndex) => {
+    const list = $(listId);
+    list.replaceChildren();
+    players.forEach((player, idx) => {
+      const role = startIndex === 0 ? state.coords[idx].role : player.role;
+      const li = document.createElement('li');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'squad-row';
+
+      const num = document.createElement('span');
+      num.className = 'squad-num';
+      num.textContent = player.number;
+
+      const name = document.createElement('span');
+      name.className = 'squad-name';
+      name.textContent = player.name;
+      if (player.isCaptain) {
+        const c = document.createElement('span');
+        c.className = 'squad-captain';
+        c.textContent = 'C';
+        name.appendChild(c);
+      }
+
+      const pill = document.createElement('span');
+      pill.className = `role-pill ${role}`;
+      pill.textContent = role;
+
+      btn.append(num, name, pill);
+      btn.addEventListener('click', () => openEditModal(player.id));
+      li.appendChild(btn);
+      list.appendChild(li);
+    });
+  };
+
+  fill('starters-list', starters(), 0);
+  fill('bench-squad-list', benchPlayers(), activeCount());
+  $('starters-count').textContent = `(${toBn(starters().length)})`;
+  $('bench-list-count').textContent = `(${toBn(benchPlayers().length)})`;
+  $('bench-empty').classList.toggle('hidden', benchPlayers().length > 0);
+  $('squad-total').textContent = `মোট ${toBn(state.players.length)} জন`;
+}
+
+/* =========================================================
+   ACTIONS
+   ========================================================= */
+
+function applyFormation(name) {
+  const layout = layoutFor(name);
+  if (!layout) return false;
+  stopSlideshow();
+  state.formation = name;
+  state.coords = layout;
+  state.edited = false;
+  ensureSquadSize(layout.length);
+  render();
+  fitStage();
   return true;
 }
 
-// Custom Confirmation Modal Dialog Helper
-function showCustomConfirm(title, message, onConfirm) {
-  const confirmModal = document.getElementById('confirm-modal');
-  const titleEl = document.getElementById('confirm-title');
-  const messageEl = document.getElementById('confirm-message');
-  const okBtn = document.getElementById('confirm-ok-btn');
-  const cancelBtn = document.getElementById('confirm-cancel-btn');
-
-  titleEl.textContent = title;
-  messageEl.textContent = message;
-
-  // Restore defaults
-  cancelBtn.style.display = 'block';
-  okBtn.textContent = 'হ্যাঁ, নিশ্চিত';
-  okBtn.className = 'btn-danger';
-  okBtn.style.background = '';
-  okBtn.style.boxShadow = '';
-
-  confirmModal.classList.add('active');
-
-  // Clone buttons to clear previous event listeners cleanly
-  const newOkBtn = okBtn.cloneNode(true);
-  const newCancelBtn = cancelBtn.cloneNode(true);
-  okBtn.parentNode.replaceChild(newOkBtn, okBtn);
-  cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
-
-  newOkBtn.addEventListener('click', () => {
-    confirmModal.classList.remove('active');
-    if (onConfirm) onConfirm();
-  });
-
-  newCancelBtn.addEventListener('click', () => {
-    confirmModal.classList.remove('active');
-  });
-
-  const clickOutsideHandler = (e) => {
-    if (e.target === confirmModal) {
-      confirmModal.classList.remove('active');
-      confirmModal.removeEventListener('click', clickOutsideHandler);
-    }
-  };
-  confirmModal.addEventListener('click', clickOutsideHandler);
+function setTeamSize(size) {
+  const format = FORMATS.find((f) => f.size === size);
+  if (!format) return;
+  const keep = activeCount() === size && format.formations.includes(state.formation) && !state.edited;
+  if (!keep) applyFormation(format.formations[0]);
 }
 
-// Custom Alert Modal Helper
-function showCustomAlert(title, message, onClose) {
-  const confirmModal = document.getElementById('confirm-modal');
-  const titleEl = document.getElementById('confirm-title');
-  const messageEl = document.getElementById('confirm-message');
-  const okBtn = document.getElementById('confirm-ok-btn');
-  const cancelBtn = document.getElementById('confirm-cancel-btn');
-
-  titleEl.textContent = title;
-  messageEl.textContent = message;
-
-  // Configure OK button for general alert
-  cancelBtn.style.display = 'none';
-  okBtn.textContent = 'ঠিক আছে';
-  okBtn.className = 'btn-primary';
-  okBtn.style.background = 'linear-gradient(135deg, var(--primary-accent), #0f766e)';
-  okBtn.style.boxShadow = 'none';
-
-  confirmModal.classList.add('active');
-
-  const newOkBtn = okBtn.cloneNode(true);
-  okBtn.parentNode.replaceChild(newOkBtn, okBtn);
-
-  newOkBtn.addEventListener('click', () => {
-    confirmModal.classList.remove('active');
-    if (onClose) onClose();
+function resetAll() {
+  showConfirm('রিসেট নিশ্চিত করুন', 'দল, রং, ফরমেশন ও সব খেলোয়াড়ের পরিবর্তন মুছে শুরুর অবস্থায় ফিরবে।', () => {
+    stopSlideshow();
+    state = freshState();
+    render();
+    fitStage();
   });
-
-  const clickOutsideHandler = (e) => {
-    if (e.target === confirmModal) {
-      confirmModal.classList.remove('active');
-      confirmModal.removeEventListener('click', clickOutsideHandler);
-      if (onClose) onClose();
-    }
-  };
-  confirmModal.addEventListener('click', clickOutsideHandler);
 }
 
-// Start Slideshow presentation in 3D Mode
-function startSlideshow() {
+/* =========================================================
+   DRAG & DROP
+   ========================================================= */
+
+let drag = null;
+
+function enableDragging() {
+  const container = $('players-container');
+  container.addEventListener('mousedown', startDrag);
+  container.addEventListener('touchstart', startDrag, { passive: false });
+  document.addEventListener('mousemove', moveDrag);
+  document.addEventListener('touchmove', moveDrag, { passive: false });
+  document.addEventListener('mouseup', endDrag);
+  document.addEventListener('touchend', endDrag);
+}
+
+const pointOf = (e) => (e.changedTouches ? e.changedTouches[0] : e);
+
+function startDrag(e) {
+  const node = e.target.closest('.player-node');
+  if (!node || (e.button !== undefined && e.button !== 0)) return;
   stopSlideshow();
-  const activeCount = getActivePlayerCount();
-  if (activeCount === 0 || players.length === 0) return;
+  e.preventDefault();
 
-  currentSlideshowIndex = 0;
-  
-  const step = () => {
-    const activeCount = getActivePlayerCount();
-    const playableCount = Math.min(activeCount, players.length);
-    if (playableCount === 0) return;
-
-    // Hide details & highlights from all nodes
-    document.querySelectorAll('.player-node').forEach(node => {
-      node.classList.remove('show-detail-card', 'slideshow-active');
-    });
-
-    const activeIndex = currentSlideshowIndex % playableCount;
-    const activeNode = document.getElementById(`player-slot-${activeIndex}`);
-    if (activeNode) {
-      activeNode.classList.add('show-detail-card', 'slideshow-active');
-    }
-
-    currentSlideshowIndex++;
+  const pt = pointOf(e);
+  const rect = node.getBoundingClientRect();
+  drag = {
+    node,
+    pitchRect: $('pitch').getBoundingClientRect(),
+    offX: pt.clientX - (rect.left + rect.width / 2),
+    offY: pt.clientY - (rect.top + rect.height / 2),
+    startX: pt.clientX,
+    startY: pt.clientY,
+    moved: false
   };
-
-  // Run first step immediately
-  step();
-
-  // Cycle every 3 seconds
-  slideshowIntervalId = setInterval(step, 3000);
 }
 
-// Stop Slideshow presentation
-function stopSlideshow() {
-  if (slideshowIntervalId) {
-    clearInterval(slideshowIntervalId);
-    slideshowIntervalId = null;
+function moveDrag(e) {
+  if (!drag) return;
+  const pt = pointOf(e);
+  if (!drag.moved && Math.hypot(pt.clientX - drag.startX, pt.clientY - drag.startY) < 4) return;
+  e.preventDefault();
+  if (!drag.moved) {
+    drag.moved = true;
+    drag.node.classList.add('dragging');
   }
-  document.querySelectorAll('.player-node').forEach(node => {
-    node.classList.remove('show-detail-card', 'slideshow-active');
+  const { pitchRect } = drag;
+  const x = ((pt.clientX - pitchRect.left - drag.offX) / pitchRect.width) * 100;
+  const y = ((pt.clientY - pitchRect.top - drag.offY) / pitchRect.height) * 100;
+  drag.node.style.left = `${Math.max(2, Math.min(98, x))}%`;
+  drag.node.style.top = `${Math.max(2, Math.min(118, y))}%`;
+
+  const bench = document.querySelector('.bench-container');
+  bench.classList.toggle('drop-target', isOver(bench, pt) && benchPlayers().length > 0);
+}
+
+const isOver = (el, pt) => {
+  const r = el.getBoundingClientRect();
+  return pt.clientX >= r.left && pt.clientX <= r.right && pt.clientY >= r.top && pt.clientY <= r.bottom;
+};
+
+function endDrag(e) {
+  if (!drag) return;
+  const { node, moved } = drag;
+  drag = null;
+  node.classList.remove('dragging');
+  const bench = document.querySelector('.bench-container');
+  bench.classList.remove('drop-target');
+
+  if (!moved) {
+    openPlayerFromNode(node);
+    return;
+  }
+
+  const slot = Number(node.dataset.slotIndex);
+  const pt = pointOf(e);
+
+  // Dropped on the bench → swap with the first substitute.
+  if (isOver(bench, pt) && benchPlayers().length > 0) {
+    const first = activeCount();
+    [state.players[slot], state.players[first]] = [state.players[first], state.players[slot]];
+    render();
+    return;
+  }
+
+  const x = Math.max(6, Math.min(94, parseFloat(node.style.left)));
+  const y = Math.max(6, Math.min(94, parseFloat(node.style.top)));
+  const role = y > 80 ? 'GK' : y > 55 ? 'DEF' : y > 30 ? 'MID' : 'FWD';
+  state.coords[slot] = { role, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+  state.edited = true;
+  render();
+}
+
+/* =========================================================
+   PLAYER CLICK / 3D CARDS / SLIDESHOW
+   ========================================================= */
+
+function onPlayerNodeClick(e) {
+  // Mouse/touch clicks are handled in endDrag; this covers keyboard activation.
+  if (e.detail !== 0) e.stopPropagation();
+}
+
+function openPlayerFromNode(node) {
+  const id = Number(node.dataset.playerId);
+  if (!id) return;
+  if (is3D && !node.classList.contains('show-detail-card')) {
+    document.querySelectorAll('.player-node.show-detail-card').forEach((n) => n.classList.remove('show-detail-card'));
+    node.classList.add('show-detail-card');
+    return;
+  }
+  node.classList.remove('show-detail-card');
+  openEditModal(id);
+}
+
+function startSlideshow() {
+  stopSlideshow(false);
+  slideshowIndex = 0;
+  const step = () => {
+    document.querySelectorAll('.player-node').forEach((n) => n.classList.remove('show-detail-card', 'slideshow-active'));
+    const count = Math.min(activeCount(), state.players.length);
+    if (!count) return;
+    $(`player-slot-${slideshowIndex % count}`)?.classList.add('show-detail-card', 'slideshow-active');
+    slideshowIndex++;
+  };
+  step();
+  slideshowTimer = setInterval(step, 3000);
+}
+
+function stopSlideshow(uncheck = true) {
+  if (slideshowTimer) clearInterval(slideshowTimer);
+  slideshowTimer = null;
+  if (uncheck) $('slideshow-toggle').checked = false;
+  document.querySelectorAll('.player-node').forEach((n) => n.classList.remove('show-detail-card', 'slideshow-active'));
+}
+
+function set3D(on) {
+  is3D = on;
+  $('pitch-viewport').classList.toggle('mode-3d', on);
+  $('slideshow-toggle-wrapper').classList.toggle('hidden', !on);
+  if (!on) stopSlideshow();
+}
+
+/* =========================================================
+   EDIT MODAL
+   ========================================================= */
+
+function openEditModal(playerId) {
+  const index = state.players.findIndex((p) => p.id === playerId);
+  if (index === -1) return;
+  const player = state.players[index];
+  const onPitch = index < activeCount();
+
+  editingPlayerId = playerId;
+  editingPhoto = player.photo;
+
+  $('player-modal-title').textContent = onPitch ? 'মাঠের খেলোয়াড় এডিট' : 'বেঞ্চের খেলোয়াড় এডিট';
+  $('player-name-input').value = player.name;
+  $('player-number-input').value = player.number;
+  $('player-role-input').value = onPitch ? state.coords[index].role : player.role;
+  $('player-captain-input').checked = !!player.isCaptain;
+
+  const select = $('player-swap-select');
+  select.replaceChildren(new Option(onPitch ? '— বেঞ্চের কারো সাথে বদল করুন —' : '— মাঠের কারো সাথে বদল করুন —', ''));
+  const pool = onPitch ? benchPlayers() : starters();
+  pool.forEach((p) => select.appendChild(new Option(`#${p.number} ${p.name}`, p.id)));
+  $('swap-label').textContent = onPitch ? 'সাবস্টিটিউশন (বেঞ্চ থেকে)' : 'মাঠে নামান (যার বদলে)';
+  $('swap-player-field').classList.toggle('hidden', pool.length === 0);
+
+  updateModalAvatar();
+  $('player-modal').classList.add('active');
+  setTimeout(() => $('player-name-input').focus(), 50);
+}
+
+function updateModalAvatar() {
+  const img = $('modal-photo-preview');
+  const placeholder = $('modal-photo-placeholder');
+  const index = state.players.findIndex((p) => p.id === editingPlayerId);
+  const role = index > -1 && index < activeCount() ? state.coords[index].role : $('player-role-input').value;
+
+  img.classList.toggle('hidden', !editingPhoto);
+  placeholder.classList.toggle('hidden', !!editingPhoto);
+  $('remove-photo-btn').classList.toggle('hidden', !editingPhoto);
+  if (editingPhoto) {
+    img.src = editingPhoto;
+  } else {
+    img.removeAttribute('src');
+    const [main, trim] = role === 'GK' ? [state.gkKit, readableOn(state.gkKit)] : [state.kit1, state.kit2];
+    placeholder.innerHTML = jerseySvg(main, trim, $('player-number-input').value || '');
+  }
+}
+
+function closeEditModal() {
+  $('player-modal').classList.remove('active');
+  editingPlayerId = null;
+  editingPhoto = null;
+  $('player-photo-input').value = '';
+}
+
+function savePlayer() {
+  const index = state.players.findIndex((p) => p.id === editingPlayerId);
+  if (index === -1) return closeEditModal();
+  const player = state.players[index];
+
+  player.name = $('player-name-input').value.trim() || player.name;
+  player.number = Math.max(1, Math.min(99, parseInt($('player-number-input').value, 10) || player.number));
+  player.photo = editingPhoto;
+
+  const role = $('player-role-input').value;
+  if (index < activeCount()) {
+    if (state.coords[index].role !== role) {
+      state.coords[index].role = role;
+      state.edited = true;
+    }
+  } else {
+    player.role = role;
+  }
+
+  if ($('player-captain-input').checked) state.players.forEach((p) => { p.isCaptain = p === player; });
+  else player.isCaptain = false;
+
+  const swapId = Number($('player-swap-select').value);
+  if (swapId) {
+    const swapIndex = state.players.findIndex((p) => p.id === swapId);
+    if (swapIndex > -1) [state.players[index], state.players[swapIndex]] = [state.players[swapIndex], state.players[index]];
+  }
+
+  closeEditModal();
+  render();
+}
+
+function deleteEditingPlayer() {
+  if (state.players.length <= activeCount()) {
+    showAlert('খেলোয়াড় কম', `এই ফরমেশনে কমপক্ষে ${toBn(activeCount())} জন খেলোয়াড় লাগবে। আগে নতুন খেলোয়াড় যোগ করুন বা ছোট দল বেছে নিন।`);
+    return;
+  }
+  const id = editingPlayerId;
+  showConfirm('খেলোয়াড় বাদ দিন', 'এই খেলোয়াড়কে স্কোয়াড থেকে বাদ দিতে চান? মাঠে থাকলে বেঞ্চের প্রথম জন তার জায়গায় নামবে।', () => {
+    const index = state.players.findIndex((p) => p.id === id);
+    if (index > -1 && index < activeCount()) {
+      // Bring the first substitute into the vacated slot so the shape is kept.
+      const [sub] = state.players.splice(activeCount(), 1);
+      state.players[index] = sub;
+    } else {
+      state.players.splice(index, 1);
+    }
+    closeEditModal();
+    render();
   });
 }
 
-// Start Application on Load
-window.addEventListener('DOMContentLoaded', initApp);
+function handlePhotoUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 3 * 1024 * 1024) {
+    showAlert('ফাইল অনেক বড়', 'অনুগ্রহ করে ৩ মেগাবাইটের কম সাইজের ছবি দিন।');
+    e.target.value = '';
+    return;
+  }
+  // Downscale to keep exports fast and localStorage small.
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const size = 256;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = size;
+      const s = Math.min(img.width, img.height);
+      canvas.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+      editingPhoto = canvas.toDataURL('image/jpeg', 0.85);
+      updateModalAvatar();
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+/* =========================================================
+   CONFIRM / ALERT
+   ========================================================= */
+
+function showDialog({ title, message, okText, okClass, showCancel, onOk }) {
+  const modal = $('confirm-modal');
+  $('confirm-title').textContent = title;
+  $('confirm-message').textContent = message;
+
+  const oldOk = $('confirm-ok-btn');
+  const oldCancel = $('confirm-cancel-btn');
+  const ok = oldOk.cloneNode(false);
+  const cancel = oldCancel.cloneNode(true);
+  ok.textContent = okText;
+  ok.className = `btn ${okClass}`;
+  cancel.classList.toggle('hidden', !showCancel);
+  oldOk.replaceWith(ok);
+  oldCancel.replaceWith(cancel);
+
+  const close = () => modal.classList.remove('active');
+  ok.addEventListener('click', () => { close(); onOk?.(); });
+  cancel.addEventListener('click', close);
+  modal.onclick = (e) => { if (e.target === modal) close(); };
+  modal.classList.add('active');
+  ok.focus();
+}
+
+const showConfirm = (title, message, onOk) =>
+  showDialog({ title, message, okText: 'হ্যাঁ, নিশ্চিত', okClass: 'btn-danger', showCancel: true, onOk });
+
+const showAlert = (title, message) =>
+  showDialog({ title, message, okText: 'ঠিক আছে', okClass: 'btn-accent', showCancel: false });
+
+/* =========================================================
+   EXPORT
+   ========================================================= */
+
+function exportImage() {
+  const overlay = $('export-overlay');
+  const viewport = $('pitch-viewport');
+  const scaler = $('pitch-scale');
+  overlay.classList.remove('hidden');
+  stopSlideshow();
+
+  // Render flat and unscaled for a crisp image.
+  viewport.classList.remove('mode-3d');
+  const prevTransform = scaler.style.transform;
+  scaler.style.transform = 'none';
+  document.body.classList.add('exporting');
+
+  const restore = () => {
+    scaler.style.transform = prevTransform;
+    if (is3D) viewport.classList.add('mode-3d');
+    document.body.classList.remove('exporting');
+    overlay.classList.add('hidden');
+  };
+
+  setTimeout(() => {
+    html2canvas($('capture-container'), { scale: 2, useCORS: true, logging: false, backgroundColor: '#0b0f0d' })
+      .then((canvas) => {
+        const link = document.createElement('a');
+        const safe = (state.teamName || 'lineup').trim().replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, '_');
+        link.download = `${safe}_${state.formation}_lineup.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      })
+      .catch((err) => {
+        console.error('Export failed:', err);
+        showAlert('ডাউনলোড ব্যর্থ', 'ইমেজ তৈরি করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।');
+      })
+      .finally(restore);
+  }, 450);
+}
+
+/* =========================================================
+   RESPONSIVE PITCH FIT
+   ========================================================= */
+
+function fitStage() {
+  const stage = $('stage');
+  const fit = $('pitch-fit');
+  const scaler = $('pitch-scale');
+  const capture = $('capture-container');
+  if (document.body.classList.contains('exporting')) return;
+
+  const natW = capture.offsetWidth;
+  const natH = capture.offsetHeight;
+  const styles = getComputedStyle(stage);
+  const padX = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+  const availW = stage.clientWidth - padX;
+
+  let scale = Math.min(1, availW / natW);
+  if (window.innerWidth > 1024) {
+    const hint = stage.querySelector('.stage-hint');
+    const padY = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+    const availH = stage.clientHeight - padY - (hint ? hint.offsetHeight + 12 : 0);
+    scale = Math.min(scale, availH / natH);
+  }
+  scale = Math.max(0.3, scale);
+
+  scaler.style.transform = `scale(${scale})`;
+  fit.style.width = `${natW * scale}px`;
+  fit.style.height = `${natH * scale}px`;
+}
+
+/* =========================================================
+   WIRING
+   ========================================================= */
+
+function buildStaticControls() {
+  const chips = $('size-chips');
+  FORMATS.forEach(({ size }) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'size-chip';
+    chip.dataset.size = size;
+    chip.setAttribute('role', 'radio');
+    chip.innerHTML = `<strong>${toBn(size)}</strong><span>জন</span>`;
+    chip.addEventListener('click', () => setTeamSize(size));
+    chips.appendChild(chip);
+  });
+
+  const presets = $('kit-presets');
+  KIT_PRESETS.forEach(([k1, k2]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'kit-preset';
+    b.dataset.kit1 = k1;
+    b.dataset.kit2 = k2;
+    b.title = `${k1} / ${k2}`;
+    b.innerHTML = jerseySvg(k1, k2);
+    b.addEventListener('click', () => {
+      state.kit1 = k1;
+      state.kit2 = k2;
+      render();
+    });
+    presets.appendChild(b);
+  });
+}
+
+function setupEvents() {
+  $('team-name-input').addEventListener('input', (e) => {
+    state.teamName = e.target.value;
+    renderHeader();
+    saveState();
+  });
+
+  [['primary-color', 'kit1'], ['secondary-color', 'kit2'], ['gk-color', 'gkKit']].forEach(([id, key]) => {
+    $(id).addEventListener('input', (e) => {
+      state[key] = e.target.value;
+      render();
+    });
+  });
+
+  $('custom-formation-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = $('custom-formation-input');
+    const parsed = parseFormation(input.value);
+    const ok = parsed && applyFormation(parsed.name);
+    $('custom-formation-error').classList.toggle('hidden', !!ok);
+    input.classList.toggle('invalid', !ok);
+    if (ok) input.value = '';
+  });
+
+  $('themes-grid').addEventListener('click', (e) => {
+    const btn = e.target.closest('.theme-btn');
+    if (!btn) return;
+    state.theme = btn.dataset.theme;
+    render();
+  });
+
+  $('perspective-toggle').addEventListener('change', (e) => set3D(e.target.checked));
+  $('slideshow-toggle').addEventListener('change', (e) => (e.target.checked ? startSlideshow() : stopSlideshow()));
+
+  $('reset-btn').addEventListener('click', resetAll);
+  $('download-btn').addEventListener('click', exportImage);
+  $('add-player-btn').addEventListener('click', () => {
+    addPlayerToState();
+    render();
+  });
+
+  // Modal
+  $('modal-close').addEventListener('click', closeEditModal);
+  $('modal-cancel-btn').addEventListener('click', closeEditModal);
+  $('player-modal').addEventListener('click', (e) => { if (e.target.id === 'player-modal') closeEditModal(); });
+  $('player-edit-form').addEventListener('submit', (e) => { e.preventDefault(); savePlayer(); });
+  $('player-photo-input').addEventListener('change', handlePhotoUpload);
+  $('remove-photo-btn').addEventListener('click', () => {
+    editingPhoto = null;
+    $('player-photo-input').value = '';
+    updateModalAvatar();
+  });
+  $('player-number-input').addEventListener('input', () => { if (!editingPhoto) updateModalAvatar(); });
+  $('player-role-input').addEventListener('change', () => { if (!editingPhoto) updateModalAvatar(); });
+  $('modal-delete-btn').addEventListener('click', deleteEditingPlayer);
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    closeEditModal();
+    $('confirm-modal').classList.remove('active');
+  });
+
+  // Clicking empty space hides 3D detail cards.
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.player-node')) {
+      document.querySelectorAll('.player-node.show-detail-card').forEach((n) => n.classList.remove('show-detail-card'));
+    }
+  });
+
+  // Keep the pitch fitted to the available space.
+  const ro = new ResizeObserver(() => fitStage());
+  ro.observe($('stage'));
+  ro.observe($('capture-container'));
+  window.addEventListener('resize', fitStage);
+  document.fonts?.ready.then(fitStage);
+}
+
+function init() {
+  loadState();
+  ensureSquadSize(activeCount());
+  buildStaticControls();
+  buildPlayerNodes();
+  setupEvents();
+  enableDragging();
+  render();
+  fitStage();
+}
+
+window.addEventListener('DOMContentLoaded', init);
