@@ -145,8 +145,6 @@ function freshState() {
 }
 
 let is3D = false;
-let slideshowTimer = null;
-let slideshowIndex = 0;
 let editingPlayerId = null;
 let editingPhoto = null;
 
@@ -319,6 +317,7 @@ function render() {
   renderPitch();
   renderBench();
   renderSquadPanel();
+  refreshCarousel();
   saveState();
 }
 
@@ -392,7 +391,7 @@ function miniFormationSvg(name) {
 function renderPitch() {
   const count = activeCount();
   const pitch = $('pitch');
-  pitch.className = `football-pitch theme-${state.theme}${count <= 7 ? ' pitch-small' : ''}`;
+  pitch.className = `football-pitch theme-${state.theme}${count <= 7 ? ' pitch-small' : ''}${carousel.active ? ' carousel-on' : ''}`;
 
   for (let i = 0; i < MAX_SLOTS; i++) {
     const node = $(`player-slot-${i}`);
@@ -523,7 +522,6 @@ function renderSquadPanel() {
 function applyFormation(name) {
   const layout = layoutFor(name);
   if (!layout) return false;
-  stopSlideshow();
   state.formation = name;
   state.coords = layout;
   state.edited = false;
@@ -571,8 +569,12 @@ const pointOf = (e) => (e.changedTouches ? e.changedTouches[0] : e);
 function startDrag(e) {
   const node = e.target.closest('.player-node');
   if (!node || (e.button !== undefined && e.button !== 0)) return;
-  stopSlideshow();
   e.preventDefault();
+  if (carousel.active) {
+    // During the carousel, tapping a player jumps to their slide.
+    carouselGo(Number(node.dataset.slotIndex));
+    return;
+  }
 
   const pt = pointOf(e);
   const rect = node.getBoundingClientRect();
@@ -664,32 +666,241 @@ function openPlayerFromNode(node) {
   openEditModal(id);
 }
 
-function startSlideshow() {
-  stopSlideshow(false);
-  slideshowIndex = 0;
-  const step = () => {
-    document.querySelectorAll('.player-node').forEach((n) => n.classList.remove('show-detail-card', 'slideshow-active'));
-    const count = Math.min(activeCount(), state.players.length);
-    if (!count) return;
-    $(`player-slot-${slideshowIndex % count}`)?.classList.add('show-detail-card', 'slideshow-active');
-    slideshowIndex++;
-  };
-  step();
-  slideshowTimer = setInterval(step, 3000);
+/* ---------- Player spotlight carousel ---------- */
+
+const CAROUSEL_MS = 4500;
+const ROLE_BN = { GK: 'গোলকিপার', DEF: 'ডিফেন্ডার', MID: 'মিডফিল্ডার', FWD: 'ফরোয়ার্ড' };
+
+const carousel = {
+  active: false,
+  index: 0,
+  timer: null,
+  remaining: CAROUSEL_MS,
+  startedAt: 0,
+  hover: false,
+  userPaused: false,
+  held: false
+};
+
+function buildCarousel() {
+  const track = $('carousel-track');
+  const dots = $('carousel-dots');
+  track.replaceChildren();
+  dots.replaceChildren();
+
+  starters().forEach((player, i) => {
+    const role = state.coords[i].role;
+    const slide = document.createElement('article');
+    slide.className = 'slide';
+    slide.setAttribute('aria-roledescription', 'slide');
+
+    const big = document.createElement('span');
+    big.className = 'slide-bignum';
+    big.textContent = player.number;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'slide-avatar';
+    avatar.appendChild(avatarEl(player, role, true));
+
+    const info = document.createElement('div');
+    info.className = 'slide-info';
+    const tags = document.createElement('div');
+    tags.className = 'slide-tags';
+    tags.innerHTML = `<span class="role-pill ${role}">${role}</span><span class="slide-pos">${ROLE_BN[role]}</span>`;
+    if (player.isCaptain) tags.insertAdjacentHTML('beforeend', '<span class="slide-captain">অধিনায়ক</span>');
+
+    const name = document.createElement('h3');
+    name.className = 'slide-name';
+    name.textContent = player.name;
+
+    const meta = document.createElement('div');
+    meta.className = 'slide-meta';
+    meta.innerHTML = `<span><small>জার্সি</small><strong>${player.number}</strong></span><span><small>পজিশন</small><strong>${toBn(i + 1)}</strong></span>`;
+
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'slide-edit';
+    edit.textContent = 'এডিট করুন →';
+    edit.addEventListener('click', () => {
+      carousel.userPaused = true;
+      carousel.editPause = true;
+      updateHold();
+      openEditModal(player.id);
+    });
+
+    info.append(tags, name, meta, edit);
+    slide.append(big, avatar, info);
+    track.appendChild(slide);
+
+    const dot = document.createElement('button');
+    dot.type = 'button';
+    dot.className = 'carousel-dot';
+    dot.setAttribute('aria-label', `${player.name}`);
+    dot.addEventListener('click', () => carouselGo(i));
+    dots.appendChild(dot);
+  });
 }
 
-function stopSlideshow(uncheck = true) {
-  if (slideshowTimer) clearInterval(slideshowTimer);
-  slideshowTimer = null;
-  if (uncheck) $('slideshow-toggle').checked = false;
-  document.querySelectorAll('.player-node').forEach((n) => n.classList.remove('show-detail-card', 'slideshow-active'));
+function carouselGo(i) {
+  const n = starters().length;
+  if (!carousel.active || !n) return;
+  carousel.index = ((i % n) + n) % n;
+  const idx = carousel.index;
+
+  $('carousel-track').style.transform = `translateX(${-idx * 100}%)`;
+  document.querySelectorAll('.carousel-dot').forEach((d, j) => d.classList.toggle('active', j === idx));
+  $('carousel-counter').textContent = `${toBn(String(idx + 1).padStart(2, '0'))} / ${toBn(String(n).padStart(2, '0'))}`;
+
+  positionCarousel();
+
+  document.querySelectorAll('.player-node.spotlight').forEach((el) => el.classList.remove('spotlight'));
+  $(`player-slot-${idx}`)?.classList.add('spotlight');
+
+  // Restart the progress bar animation.
+  const bar = $('carousel-progress');
+  bar.classList.remove('run');
+  void bar.offsetWidth;
+  bar.style.animationDuration = `${CAROUSEL_MS}ms`;
+  bar.classList.add('run');
+
+  clearTimeout(carousel.timer);
+  carousel.remaining = CAROUSEL_MS;
+  carousel.startedAt = performance.now();
+  if (!carousel.held) carousel.timer = setTimeout(() => carouselGo(carousel.index + 1), CAROUSEL_MS);
+}
+
+// Pause while hovered or when the user pressed pause; resume with the time that was left.
+function updateHold() {
+  const hold = carousel.hover || carousel.userPaused;
+  if (hold && !carousel.held) {
+    clearTimeout(carousel.timer);
+    carousel.remaining -= performance.now() - carousel.startedAt;
+    carousel.held = true;
+  } else if (!hold && carousel.held) {
+    carousel.held = false;
+    carousel.startedAt = performance.now();
+    carousel.timer = setTimeout(() => carouselGo(carousel.index + 1), Math.max(300, carousel.remaining));
+  }
+  $('carousel').classList.toggle('paused', hold);
+  $('carousel').classList.toggle('user-paused', carousel.userPaused);
+  $('carousel-play').setAttribute('aria-label', carousel.userPaused ? 'চালু করুন' : 'থামান');
+}
+
+function startSlideshow() {
+  if (!starters().length) return;
+  Object.assign(carousel, { active: true, index: 0, hover: false, userPaused: false, held: false });
+  $('slideshow-toggle').checked = true;
+  document.querySelectorAll('.player-node.show-detail-card').forEach((n) => n.classList.remove('show-detail-card'));
+  buildCarousel();
+  $('pitch').classList.add('carousel-on');
+  $('carousel').classList.add('show');
+  setLaunchState(true);
+  updateHold();
+  carouselGo(0);
+}
+
+function stopSlideshow() {
+  $('slideshow-toggle').checked = false;
+  if (!carousel.active) return;
+  carousel.active = false;
+  clearTimeout(carousel.timer);
+  $('pitch').classList.remove('carousel-on');
+  $('carousel').classList.remove('show');
+  setLaunchState(false);
+  $('carousel').classList.remove('paused', 'user-paused');
+  document.querySelectorAll('.player-node.spotlight').forEach((el) => el.classList.remove('spotlight'));
+}
+
+// Called after every render so the slides match the current squad.
+function refreshCarousel() {
+  if (!carousel.active) return;
+  if (!starters().length) return stopSlideshow();
+  buildCarousel();
+  const idx = Math.min(carousel.index, starters().length - 1);
+  if (carousel.held) {
+    // Keep the paused state; just re-show the current slide.
+    const wasRemaining = carousel.remaining;
+    carousel.held = false;
+    carouselGo(idx);
+    updateHold();
+    carousel.remaining = wasRemaining;
+  } else {
+    carouselGo(idx);
+  }
+}
+
+// Place the card over the pitch in real screen pixels (outside the scaled/3D pitch),
+// in the half away from the featured player. Integer px = no sub-pixel blur.
+function positionCarousel() {
+  if (!carousel.active) return;
+  const stage = $('stage');
+  const card = $('carousel');
+  const s = stage.getBoundingClientRect();
+  const p = $('pitch').getBoundingClientRect();
+
+  const width = Math.round(Math.min(460, s.width - 24, Math.max(360, p.width * 0.95)));
+  card.style.width = `${width}px`;
+  card.classList.toggle('compact', width < 390);
+
+  const h = card.offsetHeight;
+  const y = state.coords[carousel.index]?.y ?? 50;
+  const anchor = y >= 50 ? 0.27 : 0.73;
+  const minTop = p.top - s.top + 8;
+  const maxTop = p.bottom - s.top - h - 8;
+  let top = p.top - s.top + p.height * anchor - h / 2;
+  top = maxTop > minTop ? Math.min(Math.max(top, minTop), maxTop) : p.top - s.top + (p.height - h) / 2;
+  const left = p.left - s.left + (p.width - width) / 2;
+
+  card.style.left = `${Math.round(Math.max(12, left))}px`;
+  card.style.top = `${Math.round(top)}px`;
+}
+
+function setLaunchState(on) {
+  const btn = $('carousel-launch');
+  btn.classList.toggle('active', on);
+  $('carousel-launch-label').textContent = on ? 'ক্যারোসেল বন্ধ করুন' : 'প্লেয়ার ক্যারোসেল';
+}
+
+function setupCarousel() {
+  $('carousel-launch').addEventListener('click', () => (carousel.active ? stopSlideshow() : startSlideshow()));
+  $('carousel-close').addEventListener('click', stopSlideshow);
+  $('carousel-backdrop').addEventListener('click', stopSlideshow);
+  $('carousel-prev').addEventListener('click', () => carouselGo(carousel.index - 1));
+  $('carousel-next').addEventListener('click', () => carouselGo(carousel.index + 1));
+  $('carousel-play').addEventListener('click', () => {
+    carousel.userPaused = !carousel.userPaused;
+    updateHold();
+  });
+
+  const card = $('carousel');
+  card.addEventListener('mouseenter', () => { carousel.hover = true; updateHold(); });
+  card.addEventListener('mouseleave', () => { carousel.hover = false; updateHold(); });
+
+  // Swipe between slides on touch / pen / mouse drag.
+  const viewport = $('carousel-viewport');
+  let swipeX = null;
+  viewport.addEventListener('pointerdown', (e) => { swipeX = e.clientX; });
+  viewport.addEventListener('pointerup', (e) => {
+    if (swipeX === null) return;
+    const dx = e.clientX - swipeX;
+    swipeX = null;
+    if (Math.abs(dx) > 40) carouselGo(carousel.index + (dx < 0 ? 1 : -1));
+  });
+  viewport.addEventListener('pointercancel', () => { swipeX = null; });
+
+  window.addEventListener('keydown', (e) => {
+    if (!carousel.active || document.querySelector('.modal-overlay.active')) return;
+    if (e.target.closest?.('input, select, textarea, button')) return;
+    if (e.key === 'ArrowRight') carouselGo(carousel.index + 1);
+    else if (e.key === 'ArrowLeft') carouselGo(carousel.index - 1);
+    else if (e.key === ' ') { e.preventDefault(); carousel.userPaused = !carousel.userPaused; updateHold(); }
+  });
 }
 
 function set3D(on) {
   is3D = on;
   $('pitch-viewport').classList.toggle('mode-3d', on);
-  $('slideshow-toggle-wrapper').classList.toggle('hidden', !on);
-  if (!on) stopSlideshow();
+  setTimeout(positionCarousel, 950); // after the 3D tilt transition
 }
 
 /* =========================================================
@@ -742,6 +953,11 @@ function updateModalAvatar() {
 }
 
 function closeEditModal() {
+  if (carousel.active && carousel.editPause) {
+    carousel.editPause = false;
+    carousel.userPaused = false;
+    updateHold();
+  }
   $('player-modal').classList.remove('active');
   editingPlayerId = null;
   editingPhoto = null;
@@ -815,12 +1031,14 @@ function handlePhotoUpload(e) {
   reader.onload = () => {
     const img = new Image();
     img.onload = () => {
-      const size = 256;
+      const size = 512;
       const canvas = document.createElement('canvas');
       canvas.width = canvas.height = size;
       const s = Math.min(img.width, img.height);
-      canvas.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
-      editingPhoto = canvas.toDataURL('image/jpeg', 0.85);
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+      editingPhoto = canvas.toDataURL('image/jpeg', 0.9);
       updateModalAvatar();
     };
     img.src = reader.result;
@@ -922,7 +1140,7 @@ function fitStage() {
 
   let scale = Math.min(1, availW / natW);
   if (window.innerWidth > 1024) {
-    const hint = stage.querySelector('.stage-hint');
+    const hint = stage.querySelector('.stage-bar');
     const padY = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
     const availH = stage.clientHeight - padY - (hint ? hint.offsetHeight + 12 : 0);
     scale = Math.min(scale, availH / natH);
@@ -932,6 +1150,7 @@ function fitStage() {
   scaler.style.transform = `scale(${scale})`;
   fit.style.width = `${natW * scale}px`;
   fit.style.height = `${natH * scale}px`;
+  positionCarousel();
 }
 
 /* =========================================================
@@ -1028,8 +1247,10 @@ function setupEvents() {
 
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    const modalOpen = document.querySelector('.modal-overlay.active');
     closeEditModal();
     $('confirm-modal').classList.remove('active');
+    if (!modalOpen) stopSlideshow();
   });
 
   // Clicking empty space hides 3D detail cards.
@@ -1054,6 +1275,7 @@ function init() {
   buildPlayerNodes();
   setupEvents();
   enableDragging();
+  setupCarousel();
   render();
   fitStage();
 }

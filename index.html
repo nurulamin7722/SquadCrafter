@@ -102,8 +102,8 @@
             <input type="checkbox" id="perspective-toggle">
             <span class="toggle-track"></span>
           </label>
-          <label class="toggle hidden" id="slideshow-toggle-wrapper">
-            <span>অটো স্লাইডশো</span>
+          <label class="toggle" id="slideshow-toggle-wrapper">
+            <span>প্লেয়ার ক্যারোসেল (অটো)</span>
             <input type="checkbox" id="slideshow-toggle">
             <span class="toggle-track"></span>
           </label>
@@ -157,6 +157,9 @@
                   <div class="goalpost top-goal"></div>
                   <div class="goalpost bottom-goal"></div>
                   <div id="players-container" class="players-container"></div>
+
+                  <!-- Player spotlight carousel (never exported) -->
+                  <div class="carousel-backdrop" id="carousel-backdrop"></div>
                 </div>
 
                 <div class="bench-container">
@@ -175,10 +178,43 @@
             </div>
           </div>
         </div>
-        <p class="stage-hint">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>
-          খেলোয়াড় টেনে পজিশন বদলান · বেঞ্চে ছাড়লে সাবস্টিটিউট হবে · ক্লিক করে এডিট করুন
-        </p>
+        <!-- Spotlight card lives outside the scaled pitch so it renders at native resolution -->
+        <section class="carousel" id="carousel" aria-roledescription="carousel" aria-label="প্লেয়ার ক্যারোসেল">
+          <div class="carousel-head">
+            <span class="carousel-live"><span class="live-dot"></span><span class="en">Player Spotlight</span></span>
+            <span class="carousel-counter" id="carousel-counter"></span>
+            <button type="button" class="carousel-icon" id="carousel-close" aria-label="ক্যারোসেল বন্ধ করুন">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="carousel-viewport" id="carousel-viewport">
+            <div class="carousel-track" id="carousel-track" aria-live="polite"></div>
+          </div>
+          <div class="carousel-progress"><span id="carousel-progress"></span></div>
+          <div class="carousel-controls">
+            <button type="button" class="carousel-icon" id="carousel-prev" aria-label="আগের খেলোয়াড়">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <div class="carousel-dots" id="carousel-dots"></div>
+            <button type="button" class="carousel-icon" id="carousel-play" aria-label="থামান">
+              <svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+              <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5.5v13a1 1 0 0 0 1.5.86l11-6.5a1 1 0 0 0 0-1.72l-11-6.5A1 1 0 0 0 7 5.5Z"/></svg>
+            </button>
+            <button type="button" class="carousel-icon" id="carousel-next" aria-label="পরের খেলোয়াড়">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+          </div>
+        </section>
+        <div class="stage-bar">
+          <button type="button" class="btn btn-soft carousel-launch" id="carousel-launch">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5.5v13a1 1 0 0 0 1.5.86l11-6.5a1 1 0 0 0 0-1.72l-11-6.5A1 1 0 0 0 7 5.5Z"/></svg>
+            <span id="carousel-launch-label">প্লেয়ার ক্যারোসেল</span>
+          </button>
+          <p class="stage-hint">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>
+            টেনে পজিশন বদলান · বেঞ্চে ছাড়লে সাবস্টিটিউট · ক্লিক করে এডিট
+          </p>
+        </div>
       </main>
 
       <!-- ============ SQUAD PANEL ============ -->
