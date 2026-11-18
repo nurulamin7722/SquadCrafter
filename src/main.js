@@ -165,9 +165,23 @@ function loadState() {
   }
 }
 
+let saveFlashTimer = null;
+function flashSaved() {
+  const el = document.getElementById('save-status');
+  if (!el) return;
+  el.classList.add('saved');
+  el.querySelector('.save-text').textContent = 'সংরক্ষিত';
+  clearTimeout(saveFlashTimer);
+  saveFlashTimer = setTimeout(() => {
+    el.classList.remove('saved');
+    el.querySelector('.save-text').textContent = 'অটো-সেভ চালু';
+  }, 1400);
+}
+
 function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    flashSaved();
   } catch {
     // Photos can exceed the quota — fall back to saving without them.
     try {
@@ -203,16 +217,42 @@ function addPlayerToState() {
    ========================================================= */
 
 // Colours are written inline (not CSS vars) so html2canvas exports them correctly.
+// Each SVG gets its own gradient id: shared ids break when the first copy is display:none.
+let svgUid = 0;
+const SHIRT = 'M32 10 L20 14 L6 28 L16 40 L24 34 L24 90 L76 90 L76 34 L84 40 L94 28 L80 14 L68 10 C64 18 36 18 32 10 Z';
+
 function jerseySvg(main, trim, number = '') {
-  const num = number === '' ? '' :
-    `<text x="50" y="68" text-anchor="middle" font-family="'Barlow Condensed','Arial Narrow',sans-serif" font-weight="800" font-size="${String(number).length > 1 ? 32 : 36}" fill="${trim}">${number}</text>`;
+  const id = `jg${++svgUid}`;
+  const size = String(number).length > 1 ? 31 : 35;
+  const num = number === '' ? '' : `
+    <text x="50" y="69.5" text-anchor="middle" font-family="'Barlow Condensed','Arial Narrow',sans-serif" font-weight="700" font-size="${size}" fill="rgba(0,0,0,0.22)">${number}</text>
+    <text x="50" y="68" text-anchor="middle" font-family="'Barlow Condensed','Arial Narrow',sans-serif" font-weight="700" font-size="${size}" fill="${trim}">${number}</text>`;
   return `<svg class="jersey" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <path d="M32 10 L20 14 L6 28 L16 40 L24 34 L24 90 L76 90 L76 34 L84 40 L94 28 L80 14 L68 10 C64 18 36 18 32 10 Z" fill="${main}" stroke="rgba(0,0,0,0.35)" stroke-width="2" stroke-linejoin="round"/>
+    <defs>
+      <linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#ffffff" stop-opacity="0.30"/>
+        <stop offset="0.45" stop-color="#ffffff" stop-opacity="0"/>
+        <stop offset="1" stop-color="#000000" stop-opacity="0.32"/>
+      </linearGradient>
+    </defs>
+    <path d="${SHIRT}" fill="${main}"/>
     <path d="M6 28 L16 40 L20 37 L9.5 24.5 Z" fill="${trim}"/>
     <path d="M94 28 L84 40 L80 37 L90.5 24.5 Z" fill="${trim}"/>
     <path d="M32 10 C36 18 64 18 68 10 L64 9 C60 15 40 15 36 9 Z" fill="${trim}"/>
+    <path d="M24 34 L24 90 L28 90 L28 38 Z M76 34 L76 90 L72 90 L72 38 Z" fill="rgba(0,0,0,0.12)"/>
+    <path d="${SHIRT}" fill="url(#${id})"/>
+    <path d="${SHIRT}" fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="1.5" stroke-linejoin="round"/>
     ${num}
   </svg>`;
+}
+
+let toastTimer = null;
+function toast(message) {
+  const el = $('toast');
+  el.textContent = message;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
 }
 
 function kitFor(player, slotRole) {
@@ -284,10 +324,13 @@ function render() {
 
 function renderHeader() {
   $('pitch-team-title').textContent = state.teamName || DEFAULTS.teamName;
-  const label = state.edited ? `${state.formation} *` : state.formation;
-  $('pitch-meta').textContent = `${toBn(activeCount())} জনের দল · গোলকিপার সহ`;
-  $('match-formation').textContent = label;
+  const captain = starters().find((p) => p.isCaptain);
+  const meta = [`${toBn(activeCount())} জনের দল`];
+  if (captain) meta.push(`অধিনায়ক: ${captain.name}`);
+  $('pitch-meta').textContent = meta.join('  ·  ');
+  $('match-formation').textContent = state.edited ? `${state.formation}*` : state.formation;
   $('crest').innerHTML = jerseySvg(state.kit1, state.kit2);
+  $('capture-date').textContent = new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 function renderControls() {
@@ -441,8 +484,8 @@ function renderSquadPanel() {
       btn.className = 'squad-row';
 
       const num = document.createElement('span');
-      num.className = 'squad-num';
-      num.textContent = player.number;
+      num.className = 'squad-avatar';
+      num.appendChild(avatarEl(player, role, true));
 
       const name = document.createElement('span');
       name.className = 'squad-name';
@@ -503,6 +546,7 @@ function resetAll() {
     state = freshState();
     render();
     fitStage();
+    toast('সবকিছু রিসেট করা হয়েছে');
   });
 }
 
@@ -734,6 +778,7 @@ function savePlayer() {
 
   closeEditModal();
   render();
+  toast(swapId ? 'সাবস্টিটিউশন সম্পন্ন' : 'খেলোয়াড়ের তথ্য সংরক্ষিত');
 }
 
 function deleteEditingPlayer() {
@@ -753,6 +798,7 @@ function deleteEditingPlayer() {
     }
     closeEditModal();
     render();
+    toast('খেলোয়াড় বাদ দেওয়া হয়েছে');
   });
 }
 
@@ -840,13 +886,14 @@ function exportImage() {
   };
 
   setTimeout(() => {
-    html2canvas($('capture-container'), { scale: 2, useCORS: true, logging: false, backgroundColor: '#0b0f0d' })
+    html2canvas($('capture-container'), { scale: 2, useCORS: true, logging: false, backgroundColor: '#0a0d14' })
       .then((canvas) => {
         const link = document.createElement('a');
         const safe = (state.teamName || 'lineup').trim().replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, '_');
         link.download = `${safe}_${state.formation}_lineup.png`;
         link.href = canvas.toDataURL('image/png');
         link.click();
+        toast('লাইনআপ ইমেজ ডাউনলোড হয়েছে');
       })
       .catch((err) => {
         console.error('Export failed:', err);
@@ -961,6 +1008,7 @@ function setupEvents() {
   $('add-player-btn').addEventListener('click', () => {
     addPlayerToState();
     render();
+    toast('নতুন খেলোয়াড় বেঞ্চে যোগ হয়েছে');
   });
 
   // Modal

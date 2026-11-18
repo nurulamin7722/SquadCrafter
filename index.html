@@ -7,7 +7,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -23,6 +23,9 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <span class="save-status" id="save-status" title="আপনার লাইনআপ এই ব্রাউজারে স্বয়ংক্রিয়ভাবে সংরক্ষিত হয়">
+          <span class="save-dot"></span><span class="save-text">অটো-সেভ চালু</span>
+        </span>
         <button id="reset-btn" class="btn btn-ghost" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
           <span>রিসেট</span>
@@ -117,10 +120,14 @@
                 <div class="match-header">
                   <div class="crest" id="crest" aria-hidden="true"></div>
                   <div class="match-title">
+                    <span class="match-eyebrow"><span class="en">Starting Lineup</span> · শুরুর একাদশ</span>
                     <h2 id="pitch-team-title">আমার দল</h2>
-                    <p id="pitch-meta">১১ জন · 4-3-3</p>
+                    <p id="pitch-meta"></p>
                   </div>
-                  <div class="match-formation" id="match-formation">4-3-3</div>
+                  <div class="match-formation">
+                    <span>Formation</span>
+                    <strong id="match-formation">4-3-3</strong>
+                  </div>
                 </div>
 
                 <div id="pitch" class="football-pitch theme-classic">
@@ -154,10 +161,15 @@
 
                 <div class="bench-container">
                   <div class="bench-header">
-                    <span class="bench-title">বেঞ্চ · সাবস্টিটিউট</span>
+                    <span class="bench-title"><span class="en">Substitutes</span> · বেঞ্চ</span>
                     <span class="bench-count" id="bench-count">০ জন</span>
                   </div>
                   <div class="bench-list" id="bench-list"></div>
+                </div>
+
+                <div class="capture-footer">
+                  <span class="capture-brand">SquadCrafter</span>
+                  <span id="capture-date"></span>
                 </div>
               </div>
             </div>
@@ -277,6 +289,8 @@
         </div>
       </div>
     </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <!-- ============ EXPORT OVERLAY ============ -->
     <div id="export-overlay" class="export-overlay hidden">
